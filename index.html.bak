@@ -2,371 +2,376 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Real-World Widths & Toggleable Street Layers (MapLibre GL JS)</title>
+    <title>Urban Bike Map — Layers Demo</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- MapLibre GL JS CSS -->
-	<script src='https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js'></script>
+    <script src='https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js'></script>
     <link href='https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css' rel='stylesheet' />
     <style>
       body { margin:0; padding:0; }
-      #map { position: absolute; top:0; bottom:0; width:100vw; height:100vh; }
-      .mlgl-ctrl-group { z-index:10; }
-      .maplibregl-popup-content { font-size: 1.1em; }
+      #map { position:absolute; top:0; left:0; width:100vw; height:100vh; }
       .layer-toggle {
         position: absolute;
-        top: 10px;
-        left: 10px;
-        background: white;
-        padding: 10px;
+        top: 16px; left: 16px;
+        background: #fff;
+        padding: 10px 16px;
         z-index: 100;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px #0002;
+        border-radius: 14px;
+        box-shadow: 0 4px 18px #0002;
+        font-family: Inter, Arial, sans-serif;
+        font-size: 15px;
       }
       .layer-toggle label {
-        display: block;
-        font-family: Arial, sans-serif;
+        display: flex; align-items: center;
+        gap: 7px;
         margin-bottom: 4px;
+        cursor: pointer;
+        border-radius: 6px;
+        padding: 2px 2px 2px 2px;
+        transition: background .2s;
       }
+      .layer-toggle label:hover { background: #f1f3fa; }
+      .layer-chip {
+        width:18px; height:18px; border-radius:50%;
+        display:inline-block; margin-right:6px;
+        border: 1px solid #bbb; background: #eee; box-shadow:0 1px 2px #0001;
+      }
+      .layer-icon {
+        width: 18px; height: 18px; object-fit: contain; vertical-align: middle;
+        border-radius: 50%;
+        border: 1px solid #bbb;
+        margin-right: 6px;
+        background: #fff;
+      }
+      #cross-section {
+        width: 100%; max-width: 900px;
+        margin: 22px auto 0 auto; height: 80px;
+      }
+      .marker { display: block; border: none; border-radius: 50%; cursor: pointer; padding: 0; }
     </style>
 </head>
 <body>
-<div id="map" style="z-index: -999;"></div>
+<div id="map"></div>
 <div class="layer-toggle" id="layer-toggle"></div>
-<div id="cross-section" style="width: 100%; max-width: 900px; margin: 20px auto 0 auto; height: 80px;"></div>
-
-<!-- MapLibre GL JS -->
+<div id="cross-section"></div>
 <script>
-const map = new maplibregl.Map({
-    container: 'map',
-    style: 'https://raw.githubusercontent.com/go2garret/maps/main/src/assets/json/openStreetMap.json', // Free OSM base map
-	/*style: {
-		version: 8,
-		sources: {},
-		layers: []
-	},*/
-    center: [24.161728, 45.790919], // Change to your city!
-    zoom: 14
-});
+// --- Cross-section fields (and for colored overlays) ---
+const sectionFields = [
+  { id: "zona_verd1",  name: "Green 1",    color: "#34A853", scale: 3 },
+  { id: "parcare1",    name: "Parking 1",  color: "#FFD600", scale: 3 },
+  { id: "trotuar1",    name: "Sidewalk 1", color: "#4285F4", scale: 3 },
+  { id: "pista1",      name: "Bike 1",     color: "#00E676", scale: 4 },
+  { id: "carosabil",   name: "Road",       color: "#B0B0B0", scale: 2 },
+  { id: "pista2",      name: "Bike 2",     color: "#00E676", scale: 4 },
+  { id: "trotuar2",    name: "Sidewalk 2", color: "#4285F4", scale: 3 },
+  { id: "parcare2",    name: "Parking 2",  color: "#FFD600", scale: 3 },
+  { id: "zona_verd2",  name: "Green 2",    color: "#34A853", scale: 3 }
+];
 
-function showCrossSection(properties) {
-    const fields = [
-        { id: "zona_verd1", color: "#34A853", label: "Green" },
-        { id: "parcare1",   color: "#FFD600", label: "Parking" },
-        { id: "trotuar1",   color: "#4285F4", label: "Sidewalk" },
-        { id: "pista1",     color: "#00E676", label: "Bike" },
-        { id: "carosabil",  color: "#B0B0B0", label: "Road" },
-        { id: "pista2",     color: "#00E676", label: "Bike" },
-        { id: "trotuar2",   color: "#4285F4", label: "Sidewalk" },
-        { id: "parcare2",   color: "#FFD600", label: "Parking" },
-        { id: "zona_verd2", color: "#34A853", label: "Green" }
+// ---- Layer definitions for toggling, styles, data ----
+const layersConfig = [
+  // --- School DOM markers ---
+  {
+    id: "schools",
+    name: "Schools",
+    type: "marker",
+    icon: "assets/school-20.png",
+    data: "schools.geojson",
+    visible: true
+  },
+  // --- Isochrone polygons ---
+  {
+    id: "school_4_isochrone_fill",
+    name: "School 4 Isochrone",
+    type: "fill",
+    data: "school_4_walking_isochrone.geojson",
+    paint: {
+      "fill-color": [
+        "match", ["get", "band"],
+        "0-5",   "#c8e6c9",
+        "5-10",  "#81c784",
+        "10-15", "#388e3c",
+        "15+",   "#e77148",
+        "#c8e6c9"
+      ],
+      "fill-opacity": 0.45,
+      "fill-outline-color": "#0f0f0f"
+    },
+    visible: true,
+    chip: "#c8e6c9"
+  },
+  {
+    id: "school_4_isochrone_outline",
+    name: "Isochrone Outline",
+    type: "line",
+    data: "school_4_walking_isochrone.geojson",
+    paint: {
+      "line-color": "#0f0f0f",
+      "line-width": 1
+    },
+    visible: true,
+    chip: "#0f0f0f"
+  },
+  // --- Neighborhood limit (fill and outline) ---
+  {
+    id: "trei_stejari_limit_fill",
+    name: "Trei Stejari Limit",
+    type: "fill",
+    data: "trei_stejari_limit.geojson",
+    paint: {
+      "fill-color": "rgba(255,255,153,0.15)",
+      "fill-outline-color": "#53b653"
+    },
+    visible: true,
+    chip: "#53b653"
+  },
+  {
+    id: "trei_stejari_limit_outline",
+    name: "Limit Outline",
+    type: "line",
+    data: "trei_stejari_limit.geojson",
+    paint: {
+      "line-color": "#53b653",
+      "line-width": 2
+    },
+    visible: true,
+    chip: "#53b653"
+  },
+  // --- All streets (background, gray) ---
+  {
+    id: "background_streets",
+    name: "Other Streets",
+    type: "line",
+    data: "streets.geojson",
+    paint: {
+      "line-color": "#bbb",
+      "line-width": 10,
+      "line-opacity": 1
+    },
+    visible: true,
+    chip: "#bbb"
+  },
+  // --- School 4 assigned streets (blue) ---
+  {
+    id: "scoala_4_highlight",
+    name: "School 4 streets",
+    type: "line",
+    data: "streets.geojson",
+    paint: {
+      "line-color": "#1565C0",
+      "line-width": 6,
+      "line-opacity": 0.65
+    },
+    filter: ["==", ["get", "arondat"], "scoala_4"],
+    visible: true,
+    chip: "#1565C0"
+  },
+  // --- Section cross-section overlays ---
+  ...sectionFields.map((section, i) => ({
+    id: section.id,
+    name: section.name,
+    type: "line",
+    data: "streets.geojson",
+    paint: {
+      "line-color": section.color,
+      "line-width": ['*', ['coalesce', ['get', section.id], 0], section.scale],
+      ...(section.id !== "carosabil" ? { "line-offset": getOffsetExpr(i) } : {}),
+      "line-opacity": 0.95
+    },
+    filter: ['>', ['coalesce', ['get', section.id], 0], 0],
+    visible: true,
+    chip: section.color
+  }))
+];
+
+// ---- Offset calc for cross-section overlays ----
+function getOffsetExpr(i) {
+  const centerIndex = sectionFields.findIndex(f => f.id === "carosabil");
+  if (i === centerIndex) return 0;
+  if (i < centerIndex) {
+    const fieldsBetween = sectionFields.slice(i + 1, centerIndex);
+    return [
+      '-', 0,
+      [
+        '+',
+        ['*', ['coalesce', ['get', 'carosabil'], 0], sectionFields[centerIndex].scale * 0.5],
+        ...fieldsBetween.map(f => ['*', ['coalesce', ['get', f.id], 0], f.scale]),
+        ['*', ['coalesce', ['get', sectionFields[i].id], 0], sectionFields[i].scale * 0.5]
+      ]
     ];
-
-    // Get total width for scaling
-    const totalWidth = fields.reduce((sum, f) => sum + (parseFloat(properties[f.id]) || 0), 0);
-    const diagramWidth = 900; // px (should match your container)
-    // Avoid division by zero
-    if (totalWidth === 0) {
-        document.getElementById("cross-section").innerHTML = "<div style='padding:12px'>No cross-section data available.</div>";
-        return;
-    }
-
-    let html = '<div style="display: flex; height: 70px; border: 2px solid #444; border-radius:16px; overflow:hidden;">';
-    fields.forEach(f => {
-        const val = parseFloat(properties[f.id]) || 0;
-        if (val > 0) {
-            const widthPx = Math.max((val / totalWidth) * diagramWidth, 2); // at least 2px
-            html += `<div title="${f.label}: ${val}m" style="background:${f.color};width:${widthPx}px;height:100%;display:flex;align-items:flex-end;justify-content:center;position:relative;">
-                <span style="font-size:12px;color:#222;position:absolute;bottom:4px;width:100%;text-align:center;letter-spacing:-1px;">${val}m</span>
-            </div>`;
-        }
-    });
-    html += '</div>';
-
-    document.getElementById("cross-section").innerHTML = html;
+  } else {
+    const fieldsBetween = sectionFields.slice(centerIndex + 1, i);
+    return [
+      '+',
+      ['*', ['coalesce', ['get', 'carosabil'], 0], sectionFields[centerIndex].scale * 0.5],
+      ...fieldsBetween.map(f => ['*', ['coalesce', ['get', f.id], 0], f.scale]),
+      ['*', ['coalesce', ['get', sectionFields[i].id], 0], sectionFields[i].scale * 0.5]
+    ];
+  }
 }
 
-map.on('load', () => {
-	map.loadImage('assets/school-20.png', (error, image) => {
-		if (error) throw error;
-		console.log('Image loaded:', image);
-		map.addImage('school-icon', image);
-		map.addLayer({
-		  id: 'schools_symbol',
-		  type: 'symbol',
-		  source: 'schools',
-		  layout: {
-			'icon-image': 'school-icon',
-			'icon-size': [
-			  'case',
-			  ['==', ['get', 'denumire'], 'Scoala 4'], 1.6,
-			  1.2
-			],
-			'icon-allow-overlap': true,
-			'text-field': ['get', 'denumire'],
-			'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
-			'text-size': [
-			  'case',
-			  ['==', ['get', 'denumire'], 'Scoala 4'], 16,
-			  13
-			],
-			'text-offset': [0, 2],
-			'text-anchor': 'top'
-		  },
-		  paint: {
-			'icon-color': [
-			  'case',
-			  ['==', ['get', 'denumire'], 'Scoala 4'], '#D32F2F',
-			  '#1565C0'
-			],
-			'text-color': '#333',
-			'text-halo-color': '#fff',
-			'text-halo-width': 2
-		  }
-		});
-	});
-				
-	map.addSource('streets', { type: 'geojson', data: 'streets.geojson' });
-	map.addSource('schools', { type: 'geojson', data: 'schools.geojson' });
-	map.addSource('school_4_walking_isochrone', { type: 'geojson', data: 'school_4_walking_isochrone.geojson' });
-	map.addSource('trei_stejari_limit', { type: 'geojson', data: 'trei_stejari_limit.geojson' });
-	
-	const SCALE = 2;
-	const sectionFields = [
-	  { id: "zona_verd1",  name: "Green 1",    color: "#34A853", scale: 3 },
-	  { id: "parcare1",    name: "Parking 1",  color: "#FFD600", scale: 3 },
-	  { id: "trotuar1",    name: "Sidewalk 1", color: "#4285F4", scale: 3 },
-	  { id: "pista1",      name: "Bike 1",     color: "#00E676", scale: 4 },
-	  { id: "carosabil",   name: "Road",       color: "#B0B0B0", scale: 2 },
-	  { id: "pista2",      name: "Bike 2",     color: "#00E676", scale: 4 },
-	  { id: "trotuar2",    name: "Sidewalk 2", color: "#4285F4", scale: 3 },
-	  { id: "parcare2",    name: "Parking 2",  color: "#FFD600", scale: 3 },
-	  { id: "zona_verd2",  name: "Green 2",    color: "#34A853", scale: 3 }
-	];
+// ---- Cross-section diagram ----
+function showCrossSection(properties) {
+  const fields = sectionFields;
+  const totalWidth = fields.reduce((sum, f) => sum + (parseFloat(properties[f.id]) || 0), 0);
+  const diagramWidth = 900;
+  if (totalWidth === 0) {
+    document.getElementById("cross-section").innerHTML = "<div style='padding:12px'>No cross-section data available.</div>";
+    return;
+  }
+  let html = '<div style="display: flex; height: 70px; border: 2px solid #444; border-radius:16px; overflow:hidden;">';
+  fields.forEach(f => {
+    const val = parseFloat(properties[f.id]) || 0;
+    if (val > 0) {
+      const widthPx = Math.max((val / totalWidth) * diagramWidth, 2);
+      html += `<div title="${f.name}: ${val}m" style="background:${f.color};width:${widthPx}px;height:100%;display:flex;align-items:flex-end;justify-content:center;position:relative;">
+          <span style="font-size:12px;color:#222;position:absolute;bottom:4px;width:100%;text-align:center;letter-spacing:-1px;">${val}m</span>
+      </div>`;
+    }
+  });
+  html += '</div>';
+  document.getElementById("cross-section").innerHTML = html;
+}
+function clearCrossSection() {
+  document.getElementById("cross-section").innerHTML = "";
+}
 
-	const centerIndex = sectionFields.findIndex(f => f.id === "carosabil");
-	const px = (field, scale) => ['*', ['coalesce', ['get', field], 0], scale];
-
-	function getOffsetExpr(i) {
-		const centerIndex = sectionFields.findIndex(f => f.id === "carosabil");
-		// Center = 0
-		if (i === centerIndex) return 0;
-		// Left side
-		if (i < centerIndex) {
-			const fieldsBetween = sectionFields.slice(i + 1, centerIndex);
-			return [
-				'-', 0,
-				[
-					'+',
-					// 0.5 * carosabil width * its scale
-					['*', ['coalesce', ['get', 'carosabil'], 0], sectionFields[centerIndex].scale * 0.5],
-					// sum of full widths of in-between fields, using each's scale
-					...fieldsBetween.map(f => px(f.id, f.scale)),
-					// 0.5 * own width * own scale
-					['*', ['coalesce', ['get', sectionFields[i].id], 0], sectionFields[i].scale * 0.5]
-				]
-			];
-		}
-		// Right side
-		else {
-			const fieldsBetween = sectionFields.slice(centerIndex + 1, i);
-			return [
-				'+',
-				['*', ['coalesce', ['get', 'carosabil'], 0], sectionFields[centerIndex].scale * 0.5],
-				...fieldsBetween.map(f => px(f.id, f.scale)),
-				['*', ['coalesce', ['get', sectionFields[i].id], 0], sectionFields[i].scale * 0.5]
-			];
-		}
-	}
-	
-	map.addLayer({
-		id: 'school_4_isochrone_fill',
-		type: 'fill',
-		source: 'school_4_walking_isochrone',
-		paint: {
-			'fill-color': [
-				'match', ['get', 'band'],  // <-- Change to your field for timeband if needed
-				'0-5',   '#c8e6c9',       // very light green
-				'5-10',  '#81c784',       // medium green
-				'10-15', '#388e3c',       // dark green
-				'15+',   '#e77148',       // orange
-				'#c8e6c9'                 // default if no match
-			],
-			'fill-opacity': 0.45,
-			'fill-outline-color': '#0f0f0f'
-		}
-	});
-	// Optionally, add line outlines for clearer edges
-	map.addLayer({
-		id: 'school_4_isochrone_outline',
-		type: 'line',
-		source: 'school_4_walking_isochrone',
-		paint: {
-			'line-color': '#0f0f0f',
-			'line-width': 1
-		}
-	});
-	
-	map.addLayer({
-		id: 'background_streets',
-		type: 'line',
-		source: 'streets',
-		paint: {
-			'line-color': '#bbb',
-			'line-width': 10,
-			'line-opacity': 1
-		},
-		layout: {
-			'line-cap': 'butt',
-			'line-join': 'round'
-		}
-	});
-	
-	{
-		const cb = document.createElement('input');
-		cb.type = 'checkbox';
-		cb.id = 'streets_cb';
-		cb.checked = true;
-		cb.onchange = () => {
-			map.setLayoutProperty('background_streets', 'visibility', cb.checked ? 'visible' : 'none');
-		};
-		const label = document.createElement('label');
-		label.htmlFor = cb.id;
-		label.innerText = "Other Streets";
-		const div = document.getElementById('layer-toggle');
-		div.appendChild(cb);
-		div.appendChild(label);
-	}
-	
-	map.addLayer({
-		id: 'scoala_4_highlight',
-		type: 'line',
-		source: 'streets',
-		paint: {
-			'line-color': '#1565C0', // bright blue, or your choice
-			'line-width': 6,
-			'line-opacity': 0.65
-		},
-		filter: ['==', ['get', 'arondat'], 'scoala_4'],
-		layout: {
-			'line-cap': 'butt',
-			'line-join': 'round'
-		}
-	}); // Insert below the cross-section stack
-	
-	{
-		const cb = document.createElement('input');
-		cb.type = 'checkbox';
-		cb.type = 'checkbox';
-		cb.id = 'scoala_4_streets_cb';
-		cb.checked = true;
-		cb.onchange = () => {
-			map.setLayoutProperty('scoala_4_highlight', 'visibility', cb.checked ? 'visible' : 'none');
-		};
-		const label = document.createElement('label');
-		label.htmlFor = cb.id;
-		label.innerText = "School 4 streets";
-		const div = document.getElementById('layer-toggle');
-		div.appendChild(cb);
-		div.appendChild(label);
-	}
-	
-	map.on('click', 'background_streets', (e) => {
-		const props = e.features[0].properties;
-		let content = `<strong>${props['name']}</strong><br>`;
-		Object.keys(props).forEach(k => {
-			content += `<b>${k}:</b> ${props[k]}<br>`;
-		});
-		new maplibregl.Popup()
-			.setLngLat(e.lngLat)
-			.setHTML(content)
-			.addTo(map);
-	});
-	map.on('mouseenter', 'background_streets', () => map.getCanvas().style.cursor = 'pointer');
-	map.on('mouseleave', 'background_streets', () => map.getCanvas().style.cursor = '');
-
-	sectionFields.forEach((section, i) => {
-		const offsetExpr = getOffsetExpr(i);
-
-		map.addLayer({
-			id: section.id,
-			type: 'line',
-			source: 'streets',
-			layout: {
-				'line-cap': 'butt',
-				'line-join': 'round'
-			},
-			paint: {
-				'line-color': section.color,
-				'line-width': px(section.id, section.scale),
-				...(section.id !== "carosabil" ? { 'line-offset': offsetExpr } : {}),
-				'line-opacity': 0.95
-			},
-			filter: ['>', ['coalesce', ['get', section.id], 0], 0]
-		});
-
-		// Layer toggle UI
-		const cb = document.createElement('input');
-		cb.type = 'checkbox';
-		cb.id = section.id + '_cb';
-		cb.checked = true;
-		cb.onchange = () => {
-			map.setLayoutProperty(section.id, 'visibility', cb.checked ? 'visible' : 'none');
-		};
-		const label = document.createElement('label');
-		label.htmlFor = cb.id;
-		label.innerText = section.name;
-		const div = document.getElementById('layer-toggle');
-		div.appendChild(cb);
-		div.appendChild(label);
-
-		// Popups and pointer cursor
-		map.on('click', section.id, (e) => {
-			const props = e.features[0].properties;
-			let content = `<strong>${props['name']}</strong><br>`;
-			Object.keys(props).forEach(k => {
-				content += `<b>${k}:</b> ${props[k]}<br>`;
-			});
-			new maplibregl.Popup()
-				.setLngLat(e.lngLat)
-				.setHTML(content)
-				.addTo(map);
-		});
-		map.on('mouseenter', section.id, () => map.getCanvas().style.cursor = 'pointer');
-		map.on('mouseleave', section.id, () => map.getCanvas().style.cursor = '');
-		
-		map.on('mousemove', section.id, e => {
-			if (e.features && e.features.length)
-				showCrossSection(e.features[0].properties);
-		});
-		map.on('mouseleave', section.id, e => {
-			document.getElementById("cross-section").innerHTML = "";
-		});
-	});
-	
-	// Fill (transparent yellow)
-	map.addLayer({
-		id: 'trei_stejari_limit_fill',
-		type: 'fill',
-		source: 'trei_stejari_limit',
-		paint: {
-			'fill-color': 'rgba(255,255,153,0.15)',
-			'fill-outline-color': '#53b653'
-		}
-	});
-	// Outline (green, 2px)
-	map.addLayer({
-		id: 'trei_stejari_limit_outline',
-		type: 'line',
-		source: 'trei_stejari_limit',
-		paint: {
-			'line-color': '#53b653',
-			'line-width': 2
-		}
-	});
-
-	map.moveLayer('carosabil');
+// ---- Map Setup ----
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://raw.githubusercontent.com/go2garret/maps/main/src/assets/json/openStreetMap.json',
+  center: [24.161728, 45.790919],
+  zoom: 14
 });
 
+let schoolMarkers = [];
+
+map.on('load', () => {
+  // ---- Add sources only once ----
+  const addedSources = new Set();
+  for (const layer of layersConfig) {
+    if (layer.data && !addedSources.has(layer.data)) {
+      map.addSource(layer.data, { type: "geojson", data: layer.data });
+      addedSources.add(layer.data);
+    }
+  }
+
+  // ---- Add all layers except DOM marker ----
+  for (const layer of layersConfig) {
+    if (layer.type === "marker") continue;
+    map.addLayer({
+      id: layer.id,
+      type: layer.type,
+      source: layer.data,
+      paint: layer.paint || {},
+      layout: { "visibility": layer.visible ? "visible" : "none", "line-cap": "butt", "line-join": "round" },
+      ...(layer.filter ? { filter: layer.filter } : {})
+    });
+  }
+
+  // ---- School markers as DOM overlays ----
+  function addSchoolMarkers() {
+    const src = map.getSource("schools.geojson");
+    if (!src) return setTimeout(addSchoolMarkers, 120);
+    Promise.resolve(src.getData()).then(geojson => {
+      if (!geojson?.features?.length) return setTimeout(addSchoolMarkers, 120);
+      geojson.features.forEach(marker => {
+        const el = document.createElement('div');
+        el.className = "marker";
+        el.style.width = '32px';
+        el.style.height = '32px';
+        el.style.background = "url('assets/school-20.png') center/contain no-repeat";
+        el.style.borderRadius = '50%';
+        el.title = marker.properties.denumire || marker.properties.name || 'School';
+        el.style.cursor = 'pointer';
+        el.onclick = () =>
+          new maplibregl.Popup()
+            .setLngLat(marker.geometry.coordinates)
+            .setHTML(`<strong>${el.title}</strong>`)
+            .addTo(map);
+        const m = new maplibregl.Marker({element: el})
+          .setLngLat(marker.geometry.coordinates)
+          .addTo(map);
+        schoolMarkers.push(m);
+      });
+    });
+  }
+  function removeSchoolMarkers() {
+    schoolMarkers.forEach(m => m.remove());
+    schoolMarkers = [];
+  }
+  addSchoolMarkers();
+
+  // ---- Dynamic layer toggles UI ----
+  const ui = document.getElementById("layer-toggle");
+  ui.innerHTML = "";
+  for (const layer of layersConfig) {
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = layer.visible;
+    cb.id = "cb-" + layer.id;
+    cb.onchange = () => {
+      layer.visible = cb.checked;
+      if (layer.type === "marker") {
+        if (cb.checked) addSchoolMarkers(); else removeSchoolMarkers();
+      } else {
+        map.setLayoutProperty(layer.id, "visibility", cb.checked ? "visible" : "none");
+      }
+    };
+    const label = document.createElement("label");
+    label.htmlFor = cb.id;
+    // Color chip or icon
+    if (layer.icon) {
+      const img = document.createElement("img");
+      img.src = layer.icon;
+      img.className = "layer-icon";
+      label.appendChild(img);
+    } else if (layer.chip || layer.paint?.["line-color"] || layer.paint?.["fill-color"]) {
+      const chip = document.createElement("span");
+      chip.className = "layer-chip";
+      chip.style.background = layer.chip || layer.paint["line-color"] || layer.paint["fill-color"];
+      label.appendChild(chip);
+    }
+    label.appendChild(document.createTextNode(layer.name));
+    ui.appendChild(label);
+    label.prepend(cb);
+  }
+
+  // ---- Attach popups, pointer, and cross-section to cross-section layers only ----
+  for (const section of sectionFields) {
+    map.on('click', section.id, (e) => {
+      const props = e.features[0].properties;
+      let content = `<strong>${props['name'] || ''}</strong><br>`;
+      Object.keys(props).forEach(k => {
+        content += `<b>${k}:</b> ${props[k]}<br>`;
+      });
+      new maplibregl.Popup()
+        .setLngLat(e.lngLat)
+        .setHTML(content)
+        .addTo(map);
+    });
+    map.on('mouseenter', section.id, () => map.getCanvas().style.cursor = 'pointer');
+    map.on('mouseleave', section.id, () => map.getCanvas().style.cursor = '');
+    map.on('mousemove', section.id, e => {
+      if (e.features && e.features.length)
+        showCrossSection(e.features[0].properties);
+    });
+    map.on('mouseleave', section.id, clearCrossSection);
+  }
+  // --- Also add popup to streets background layer (optional) ---
+  map.on('click', 'background_streets', (e) => {
+    const props = e.features[0].properties;
+    let content = `<strong>${props['name'] || ''}</strong><br>`;
+    Object.keys(props).forEach(k => {
+      content += `<b>${k}:</b> ${props[k]}<br>`;
+    });
+    new maplibregl.Popup()
+      .setLngLat(e.lngLat)
+      .setHTML(content)
+      .addTo(map);
+  });
+  map.on('mouseenter', 'background_streets', () => map.getCanvas().style.cursor = 'pointer');
+  map.on('mouseleave', 'background_streets', () => map.getCanvas().style.cursor = '');
+});
 </script>
 </body>
 </html>

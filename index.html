@@ -27,6 +27,13 @@
         font-family: Arial, sans-serif;
         margin-bottom: 4px;
       }
+	  .marker {
+			display: block;
+			border: none;
+			border-radius: 50%;
+			cursor: pointer;
+			padding: 0;
+		}
     </style>
 </head>
 <body>
@@ -36,14 +43,16 @@
 
 <!-- MapLibre GL JS -->
 <script>
+let schoolMarkers = [];
+
 const map = new maplibregl.Map({
     container: 'map',
-    //style: 'https://raw.githubusercontent.com/go2garret/maps/main/src/assets/json/openStreetMap.json', // Free OSM base map
-	style: {
+    style: 'https://raw.githubusercontent.com/go2garret/maps/main/src/assets/json/openStreetMap.json', // Free OSM base map
+	/*style: {
 		version: 8,
 		sources: {},
 		layers: []
-	},
+	},*/
     center: [24.161728, 45.790919], // Change to your city!
     zoom: 14
 });
@@ -85,46 +94,7 @@ function showCrossSection(properties) {
     document.getElementById("cross-section").innerHTML = html;
 }
 
-map.on('load', () => {
-	map.loadImage('assets/school-20.png', (error, image) => {
-		if (error) throw error;
-		console.log('Image loaded:', image);
-		map.addImage('school-icon', image);
-		map.addLayer({
-		  id: 'schools_symbol',
-		  type: 'symbol',
-		  source: 'schools',
-		  layout: {
-			'icon-image': 'school-icon',
-			'icon-size': [
-			  'case',
-			  ['==', ['get', 'denumire'], 'Scoala 4'], 1.6,
-			  1.2
-			],
-			'icon-allow-overlap': true,
-			'text-field': ['get', 'denumire'],
-			'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
-			'text-size': [
-			  'case',
-			  ['==', ['get', 'denumire'], 'Scoala 4'], 16,
-			  13
-			],
-			'text-offset': [0, 2],
-			'text-anchor': 'top'
-		  },
-		  paint: {
-			'icon-color': [
-			  'case',
-			  ['==', ['get', 'denumire'], 'Scoala 4'], '#D32F2F',
-			  '#1565C0'
-			],
-			'text-color': '#333',
-			'text-halo-color': '#fff',
-			'text-halo-width': 2
-		  }
-		});
-	});
-				
+map.on('load', () => {	
 	map.addSource('streets', { type: 'geojson', data: 'streets.geojson' });
 	map.addSource('schools', { type: 'geojson', data: 'schools.geojson' });
 	map.addSource('school_4_walking_isochrone', { type: 'geojson', data: 'school_4_walking_isochrone.geojson' });
@@ -205,6 +175,57 @@ map.on('load', () => {
 			'line-width': 1
 		}
 	});
+	
+	{
+		const cb = document.createElement('input');
+		cb.type = 'checkbox';
+		cb.id = 'trei_stejari_limit_cb';
+		cb.checked = true;
+		cb.onchange = () => {
+			map.setLayoutProperty('trei_stejari_limit_fill', 'visibility', cb.checked ? 'visible' : 'none');
+			map.setLayoutProperty('trei_stejari_limit_outline', 'visibility', cb.checked ? 'visible' : 'none');
+		};
+		const label = document.createElement('label');
+		label.htmlFor = cb.id;
+		label.innerText = 'Trei Stejari Limit';
+		const div = document.getElementById('layer-toggle');
+		div.appendChild(cb);
+		div.appendChild(label);
+	}
+	
+	{
+		const cb = document.createElement('input');
+		cb.type = 'checkbox';
+		cb.id = 'school_4_isochrone_cb';
+		cb.checked = true;
+		cb.onchange = () => {
+			map.setLayoutProperty('school_4_isochrone_fill', 'visibility', cb.checked ? 'visible' : 'none');
+			map.setLayoutProperty('school_4_isochrone_outline', 'visibility', cb.checked ? 'visible' : 'none');
+		};
+		const label = document.createElement('label');
+		label.htmlFor = cb.id;
+		label.innerText = "School 4 Isochrone (walking)";
+		const div = document.getElementById('layer-toggle');
+		div.appendChild(cb);
+		div.appendChild(label);
+	}
+		
+	{
+		const cb = document.createElement('input');
+		cb.type = 'checkbox';
+		cb.id = 'schools_cb';
+		cb.checked = true;
+		cb.onchange = () => {
+			if (cb.checked) addSchoolMarkers();
+			else removeSchoolMarkers();
+		};
+		const label = document.createElement('label');
+		label.htmlFor = cb.id;
+		label.innerText = "Schools";
+		const div = document.getElementById('layer-toggle');
+		div.appendChild(cb);
+		div.appendChild(label);
+	}
 	
 	map.addLayer({
 		id: 'background_streets',
@@ -365,6 +386,41 @@ map.on('load', () => {
 	});
 
 	map.moveLayer('carosabil');
+	
+	function addSchoolMarkers() {
+	  const source = map.getSource('schools');
+	  if (!source) {
+		return setTimeout(addSchoolMarkers, 200);
+	  }
+	  Promise.resolve(source.getData()).then(geojson => {
+		if (!geojson?.features?.length) {
+		  return setTimeout(addSchoolMarkers, 200);
+		}
+		  geojson.features.forEach(marker => {
+			const el = document.createElement('div');
+			el.style.width = '32px';
+			el.style.height = '32px';
+			el.style.background = "url('assets/school-20.png') center/contain no-repeat";
+			el.style.borderRadius = '50%';
+			el.title = marker.properties.denumire || marker.properties.name || 'School';
+			el.style.cursor = 'pointer';
+			el.onclick = () =>
+			  new maplibregl.Popup()
+				.setLngLat(marker.geometry.coordinates)
+				.setHTML(`<strong>${el.title}</strong>`)
+				.addTo(map);
+			const m = new maplibregl.Marker({element: el})
+			  .setLngLat(marker.geometry.coordinates)
+			  .addTo(map);
+			schoolMarkers.push(m);
+		  });
+	  });
+	}
+	function removeSchoolMarkers() {
+	  schoolMarkers.forEach(m => m.remove());
+	  schoolMarkers = [];
+	}
+	addSchoolMarkers();
 });
 
 </script>
