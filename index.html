@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Real-World Widths & Toggleable Street Layers (MapLibre GL JS)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- MapLibre GL JS CSS -->
+	<script src='https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js'></script>
+    <link href='https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css' rel='stylesheet' />
+    <style>
+      body { margin:0; padding:0; }
+      #map { position: absolute; top:0; bottom:0; width:100vw; height:100vh; }
+      .mlgl-ctrl-group { z-index:10; }
+      .maplibregl-popup-content { font-size: 1.1em; }
+      .layer-toggle {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: white;
+        padding: 10px;
+        z-index: 100;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px #0002;
+      }
+      .layer-toggle label {
+        display: block;
+        font-family: Arial, sans-serif;
+        margin-bottom: 4px;
+      }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+<div class="layer-toggle" id="layer-toggle"></div>
+<div id="cross-section" style="width: 100%; max-width: 900px; margin: 20px auto 0 auto; height: 80px;"></div>
+
+<!-- MapLibre GL JS -->
+<script>
+const map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://raw.githubusercontent.com/go2garret/maps/main/src/assets/json/openStreetMap.json', // Free OSM base map
+    center: [24.161728, 45.790919], // Change to your city!
+    zoom: 14
+});
+
+function showCrossSection(properties) {
+    const fields = [
+        { id: "zona_verd1", color: "#34A853", label: "Green" },
+        { id: "parcare1",   color: "#FFD600", label: "Parking" },
+        { id: "trotuar1",   color: "#4285F4", label: "Sidewalk" },
+        { id: "pista1",     color: "#00E676", label: "Bike" },
+        { id: "carosabil",  color: "#B0B0B0", label: "Road" },
+        { id: "pista2",     color: "#00E676", label: "Bike" },
+        { id: "trotuar2",   color: "#4285F4", label: "Sidewalk" },
+        { id: "parcare2",   color: "#FFD600", label: "Parking" },
+        { id: "zona_verd2", color: "#34A853", label: "Green" }
+    ];
+
+    // Get total width for scaling
+    const totalWidth = fields.reduce((sum, f) => sum + (parseFloat(properties[f.id]) || 0), 0);
+    const diagramWidth = 900; // px (should match your container)
+    // Avoid division by zero
+    if (totalWidth === 0) {
+        document.getElementById("cross-section").innerHTML = "<div style='padding:12px'>No cross-section data available.</div>";
+        return;
+    }
+
+    let html = '<div style="display: flex; height: 70px; border: 2px solid #444; border-radius:16px; overflow:hidden;">';
+    fields.forEach(f => {
+        const val = parseFloat(properties[f.id]) || 0;
+        if (val > 0) {
+            const widthPx = Math.max((val / totalWidth) * diagramWidth, 2); // at least 2px
+            html += `<div title="${f.label}: ${val}m" style="background:${f.color};width:${widthPx}px;height:100%;display:flex;align-items:flex-end;justify-content:center;position:relative;">
+                <span style="font-size:12px;color:#222;position:absolute;bottom:4px;width:100%;text-align:center;letter-spacing:-1px;">${val}m</span>
+            </div>`;
+        }
+    });
+    html += '</div>';
+
+    document.getElementById("cross-section").innerHTML = html;
+}
+
+map.on('load', () => {
+    fetch('streets.geojson')
+        .then(resp => resp.json())
+        .then(data => {
+			console.log('Loaded GeoJSON:', data); // <-- Add this line!			
+			map.addSource('streets', { type: 'geojson', data: data });
+			
+			const SCALE = 2;
+			const sectionFields = [
+			  { id: "zona_verd1",  name: "Green 1",    color: "#34A853" },
+			  { id: "parcare1",    name: "Parking 1",  color: "#FFD600" },
+			  { id: "trotuar1",    name: "Sidewalk 1", color: "#4285F4" },
+			  { id: "pista1",      name: "Bike 1",     color: "#00E676" },
+			  { id: "carosabil",   name: "Road",       color: "#B0B0B0" },
+			  { id: "pista2",      name: "Bike 2",     color: "#00E676" },
+			  { id: "trotuar2",    name: "Sidewalk 2", color: "#4285F4" },
+			  { id: "parcare2",    name: "Parking 2",  color: "#FFD600" },
+			  { id: "zona_verd2",  name: "Green 2",    color: "#34A853" }
+			];
+
+			const centerIndex = sectionFields.findIndex(f => f.id === "carosabil");
+			const px = (field, scale) => ['*', ['coalesce', ['get', field], 0], scale];
+			
+			function getOffsetExpr(i) {
+				// Center = 0
+				if (i === centerIndex) return 0;
+				// Left side
+				if (i < centerIndex) {
+					const fieldsBetween = sectionFields.slice(i + 1, centerIndex);
+					return [
+						'-', 0,
+						[
+							'+',
+							// 0.5 * carosabil width
+							['*', ['coalesce', ['get', 'carosabil'], 0], 0.5 * SCALE],
+							// sum of full widths of in-between fields
+							...fieldsBetween.map(f => px(f.id, SCALE)),
+							// 0.5 * own width
+							['*', ['coalesce', ['get', sectionFields[i].id], 0], 0.5 * SCALE]
+						]
+					];
+				}
+				// Right side
+				else {
+					const fieldsBetween = sectionFields.slice(centerIndex + 1, i);
+					return [
+						'+',
+						['*', ['coalesce', ['get', 'carosabil'], 0], 0.5 * SCALE],
+						...fieldsBetween.map(f => px(f.id, SCALE)),
+						['*', ['coalesce', ['get', sectionFields[i].id], 0], 0.5 * SCALE]
+					];
+				}
+			}
+		
+			map.on('mousemove', 'carosabil', e => {
+				if (e.features && e.features.length) {
+					showCrossSection(e.features[0].properties);
+				}
+			});
+			map.on('mouseleave', 'carosabil', e => {
+				document.getElementById("cross-section").innerHTML = "";
+			});
+
+			sectionFields.forEach((section, i) => {
+				const offsetExpr = getOffsetExpr(i);
+
+				map.addLayer({
+					id: section.id,
+					type: 'line',
+					source: 'streets',
+					layout: {
+						'line-cap': 'butt',
+						'line-join': 'round'
+					},
+					paint: {
+						'line-color': section.color,
+						'line-width': px(section.id, SCALE),
+						...(section.id !== "carosabil" ? { 'line-offset': offsetExpr } : {}),
+						'line-opacity': 0.95
+					},
+					filter: ['>', ['coalesce', ['get', section.id], 0], 0]
+				});
+
+				// Layer toggle UI
+				const cb = document.createElement('input');
+				cb.type = 'checkbox';
+				cb.id = section.id + '_cb';
+				cb.checked = true;
+				cb.onchange = () => {
+					map.setLayoutProperty(section.id, 'visibility', cb.checked ? 'visible' : 'none');
+				};
+				const label = document.createElement('label');
+				label.htmlFor = cb.id;
+				label.innerText = section.name;
+				const div = document.getElementById('layer-toggle');
+				div.appendChild(cb);
+				div.appendChild(label);
+
+				// Popups and pointer cursor
+				if (section.id === "carosabil") {
+					map.on('click', section.id, (e) => {
+						const props = e.features[0].properties;
+						let content = `<strong>${section.name}</strong><br>`;
+						Object.keys(props).forEach(k => {
+							content += `<b>${k}:</b> ${props[k]}<br>`;
+						});
+						new maplibregl.Popup()
+							.setLngLat(e.lngLat)
+							.setHTML(content)
+							.addTo(map);
+					});
+					map.on('mouseenter', section.id, () => map.getCanvas().style.cursor = 'pointer');
+					map.on('mouseleave', section.id, () => map.getCanvas().style.cursor = '');
+				}
+			});
+			
+			map.moveLayer('carosabil');
+		});
+});
+
+</script>
+</body>
+</html>
