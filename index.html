@@ -376,11 +376,12 @@
             const data = {
                 streets: null,
                 schools: null,
-                treiStejariLimit: null,
+                neighborhoodLimits: null,
                 neighborhoods: [],
                 byNeighborhood: {},
                 schoolsIndex: {},
                 isochrones: {},
+                neighborhoodLimitsIndex: {},
             };
 
             const state = {
@@ -397,10 +398,10 @@
 
             (async function preloadAll() {
                 try {
-                    const [streets, schools, treiStejariLimit] = await Promise.all([fetch("streets.geojson", { cache: "no-store" }).then((r) => r.json()), fetch("schools.geojson", { cache: "no-store" }).then((r) => r.json()), fetch("trei_stejari_limit.geojson", { cache: "no-store" }).then((r) => r.json())]);
+                    const [streets, schools, neighborhoodLimits] = await Promise.all([fetch("streets.geojson", { cache: "no-store" }).then((r) => r.json()), fetch("schools.geojson", { cache: "no-store" }).then((r) => r.json()), fetch("neighborhood_limits.geojson", { cache: "no-store" }).then((r) => r.json())]);
                     data.streets = streets;
                     data.schools = schools;
-                    data.treiStejariLimit = treiStejariLimit;
+                    data.neighborhoodLimits = neighborhoodLimits;
                     indexData();
                     calculateAndDisplayStats();
                     await prefetchIsochrones();
@@ -474,39 +475,80 @@
                     const sslug = numMatch ? "scoala_" + numMatch[0] : nm.trim().toLowerCase().replace(/\s+/g, "_");
                     data.schoolsIndex[sslug] = { name: nm, coord: sf.geometry && sf.geometry.coordinates, number: numMatch ? numMatch[0] : null };
                 }
+
+                data.neighborhoodLimitsIndex = {};
+                if (data.neighborhoodLimits && data.neighborhoodLimits.features) {
+                    for (const feature of data.neighborhoodLimits.features) {
+                        const name = feature.properties.denumire;
+                        if (name) {
+                            const hid = slug(name);
+                            data.neighborhoodLimitsIndex[hid] = feature;
+                        }
+                    }
+                }
             }
 
             async function prefetchIsochrones() {
+                // 1. Initialize the data structure
                 data.isochrones = {};
-                const tasks = [];
                 for (let sslug in data.schoolsIndex) {
-                    data.isochrones[sslug] = { walk: null, cycle: null };
-                    const num = data.schoolsIndex[sslug].number;
-                    if (!num) continue;
-                    const walkUrl = `school_${num}_walking_isochrone.geojson`;
-                    const cycleUrl = `school_${num}_cycling_isochrone.geojson`;
-                    tasks.push(
-                        fetch(walkUrl, { cache: "no-store" })
-                            .then((r) => (r.ok ? r.json() : null))
-                            .then((gj) => {
-                                data.isochrones[sslug].walk = gj;
-                            })
-                            .catch(() => {
-                                data.isochrones[sslug].walk = null;
-                            })
-                    );
-                    tasks.push(
-                        fetch(cycleUrl, { cache: "no-store" })
-                            .then((r) => (r.ok ? r.json() : null))
-                            .then((gj) => {
-                                data.isochrones[sslug].cycle = gj;
-                            })
-                            .catch(() => {
-                                data.isochrones[sslug].cycle = null;
-                            })
-                    );
+                    data.isochrones[sslug] = {
+                        walk: { type: "FeatureCollection", features: [] },
+                        cycle: { type: "FeatureCollection", features: [] },
+                    };
                 }
-                await Promise.all(tasks);
+
+                try {
+                    // 2. Fetch the single consolidated file
+                    const response = await fetch("school_isochrones.geojson", { cache: "no-store" });
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const allIsochrones = await response.json();
+
+                    // 3. Process and distribute the features
+                    if (allIsochrones && allIsochrones.features) {
+                        for (const feature of allIsochrones.features) {
+                            const p = feature.properties;
+                            if (!p || !p.den_scoala || !p.tip || p.cost_level === undefined) continue;
+
+                            const sslug = p.den_scoala;
+                            const type = p.tip; // 'pietonal' or 'ciclopietonal'
+                            const cost = p.cost_level;
+
+                            // Assign the 'band' property required by the map styling expressions
+                            if (cost <= 300) feature.properties.band = "0-5";
+                            else if (cost <= 600) feature.properties.band = "5-10";
+                            else if (cost <= 900) feature.properties.band = "10-15";
+                            else feature.properties.band = "15+";
+
+                            // Ensure the school exists in our index
+                            if (data.isochrones[sslug]) {
+                                if (type === "pietonal") {
+                                    data.isochrones[sslug].walk.features.push(feature);
+                                } else if (type === "ciclopietonal") {
+                                    data.isochrones[sslug].cycle.features.push(feature);
+                                }
+                            }
+                        }
+                    }
+                    // After processing, check if any school has no isochrones and set to null to avoid errors
+                    for (let sslug in data.isochrones) {
+                        if (data.isochrones[sslug].walk.features.length === 0) {
+                            data.isochrones[sslug].walk = null;
+                        }
+                        if (data.isochrones[sslug].cycle.features.length === 0) {
+                            data.isochrones[sslug].cycle = null;
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to load or process school_isochrones.geojson:", e);
+                    // Set all to null if the file fails to load
+                    for (let sslug in data.isochrones) {
+                        data.isochrones[sslug].walk = null;
+                        data.isochrones[sslug].cycle = null;
+                    }
+                }
             }
 
             const srcIdForHood = (hid) => NS + "_src__" + hid;
@@ -520,7 +562,9 @@
 
             function createMaskGeoJSON(boundaryFeature) {
                 if (!boundaryFeature || !boundaryFeature.geometry || !boundaryFeature.geometry.coordinates) return null;
-                const boundaryCoords = boundaryFeature.geometry.coordinates[0][0];
+                // Works for both Polygon and MultiPolygon (takes the first polygon's exterior ring)
+                const boundaryCoords = boundaryFeature.geometry.type === "Polygon" ? boundaryFeature.geometry.coordinates[0] : boundaryFeature.geometry.coordinates[0][0];
+
                 return {
                     type: "Feature",
                     geometry: {
@@ -541,7 +585,6 @@
 
             function addAllLayersFromMemory() {
                 streetLayerIds = [];
-                const tsSlug = "trei_stejari";
 
                 for (let { slug: hid } of data.neighborhoods) {
                     ensureHoodSource(hid);
@@ -567,19 +610,23 @@
                         if (!map.getLayer(assignedId)) map.addLayer({ id: assignedId, type: "line", source: srcIdForHood(hid), filter: ["==", ["get", "arondat"], sslug], paint: { "line-color": "#ff9100", "line-width": 8, "line-opacity": 0.8 }, layout: { visibility: "none", "line-cap": "round", "line-join": "round" } });
                         streetLayerIds.push(assignedId);
                     }
-                }
 
-                if (data.treiStejariLimit) {
-                    const tsLimitSrcId = lid(tsSlug, "limit_src");
-                    const tsMaskSrcId = lid(tsSlug, "mask_src");
-                    if (!map.getSource(tsLimitSrcId)) map.addSource(tsLimitSrcId, { type: "geojson", data: data.treiStejariLimit });
-                    const maskGeoJSON = createMaskGeoJSON(data.treiStejariLimit.features[0]);
-                    if (maskGeoJSON && !map.getSource(tsMaskSrcId)) map.addSource(tsMaskSrcId, { type: "geojson", data: maskGeoJSON });
+                    // Dynamically add boundary limits for any neighborhood that has one
+                    const boundaryFeature = data.neighborhoodLimitsIndex[hid];
+                    if (boundaryFeature) {
+                        const limitSrcId = lid(hid, "limit_src");
+                        const maskSrcId = lid(hid, "mask_src");
+                        if (!map.getSource(limitSrcId)) map.addSource(limitSrcId, { type: "geojson", data: boundaryFeature });
 
-                    const tsMaskLayerId = lid(tsSlug, "mask");
-                    if (!map.getLayer(tsMaskLayerId)) map.addLayer({ id: tsMaskLayerId, type: "fill", source: tsMaskSrcId, paint: { "fill-color": MAP_DARK_BG, "fill-opacity": 1 }, layout: { visibility: "none" } });
-                    const tsLimitLayerId = lid(tsSlug, "limit");
-                    if (!map.getLayer(tsLimitLayerId)) map.addLayer({ id: tsLimitLayerId, type: "line", source: tsLimitSrcId, paint: { "line-color": "#00BFFF", "line-width": 10, "line-opacity": 0.9 }, layout: { visibility: "none" } });
+                        const maskGeoJSON = createMaskGeoJSON(boundaryFeature);
+                        if (maskGeoJSON && !map.getSource(maskSrcId)) map.addSource(maskSrcId, { type: "geojson", data: maskGeoJSON });
+
+                        const maskLayerId = lid(hid, "mask");
+                        if (!map.getLayer(maskLayerId)) map.addLayer({ id: maskLayerId, type: "fill", source: maskSrcId, paint: { "fill-color": MAP_DARK_BG, "fill-opacity": 1 }, layout: { visibility: "none" } });
+
+                        const limitLayerId = lid(hid, "limit");
+                        if (!map.getLayer(limitLayerId)) map.addLayer({ id: limitLayerId, type: "line", source: limitSrcId, paint: { "line-color": "#00BFFF", "line-width": 10, "line-opacity": 0.9 }, layout: { visibility: "none" } });
+                    }
                 }
             }
 
@@ -620,22 +667,20 @@
 
             function ensureCorrectLayerOrder() {
                 map.once("idle", () => {
-                    const tsSlug = "trei_stejari";
                     const allLayers = map.getStyle().layers;
-
                     const ourLayerIds = allLayers.map((l) => l.id).filter((id) => isOurLayerId(id));
 
                     const layerGroups = {
                         isos: ourLayerIds.filter((id) => id.includes("__iso_")),
-                        otherStreets: ourLayerIds.filter((id) => !id.startsWith(lid(tsSlug)) && !id.includes("__iso_")),
-                        tsStreets: ourLayerIds.filter((id) => id.startsWith(lid(tsSlug)) && /__(bg|bike|.*parking|assigned)$/.test(id)),
-                        tsMask: ourLayerIds.filter((id) => id === lid(tsSlug, "mask")),
-                        tsLimit: ourLayerIds.filter((id) => id === lid(tsSlug, "limit")),
+                        streets: ourLayerIds.filter((id) => !id.includes("__iso_") && !id.includes("__limit") && !id.includes("__mask")),
+                        masks: ourLayerIds.filter((id) => id.includes("__mask")),
+                        limits: ourLayerIds.filter((id) => id.includes("__limit")),
                     };
 
                     const firstMapLabel = allLayers.find((l) => l.type === "symbol")?.id;
 
-                    const orderedLayers = [...layerGroups.isos, ...layerGroups.otherStreets, ...layerGroups.tsStreets, ...layerGroups.tsMask, ...layerGroups.tsLimit];
+                    // Order: isochrones, streets, then boundary masks, then boundary lines, then map labels
+                    const orderedLayers = [...layerGroups.isos, ...layerGroups.streets, ...layerGroups.masks, ...layerGroups.limits];
 
                     for (const layerId of orderedLayers) {
                         if (map.getLayer(layerId)) {
@@ -659,9 +704,11 @@
                 const keys = [];
                 const hid = parts[0];
 
+                // Boundary layers depend on the main neighborhood toggle and their own clipping toggle
                 if (parts[1] === "limit") return [lid(hid)];
                 if (parts[1] === "mask") return [lid(hid), lid(hid, "clipping")];
 
+                // Street layers
                 keys.push(lid(hid));
                 if (parts[1] === "bg") {
                     keys.push(lid(hid, "streets"));
@@ -672,6 +719,7 @@
                     keys.push(lid(hid, parts[1]));
                     return keys;
                 }
+                // School layers
                 if (parts[1] === "schools") {
                     keys.push(lid(hid, "schools"));
                     if (parts.length >= 3) {
@@ -782,7 +830,7 @@
                     if (!state.visible.has(hoodKey)) state.visible.set(hoodKey, true);
                     if (!state.expanded.has(hoodKey)) state.expanded.set(hoodKey, true);
 
-                    const hasBoundary = hid === "trei_stejari";
+                    const hasBoundary = !!data.neighborhoodLimitsIndex[hid];
                     const hoodChipColor = hasBoundary ? "#00BFFF" : null;
                     const wrap = document.createElement("div");
                     wrap.className = "group";
