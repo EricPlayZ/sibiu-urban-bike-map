@@ -329,23 +329,18 @@
             ];
 
             const NS = "nb";
-            const slug = (s) =>
-                String(s || "")
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]+/g, "_")
-                    .replace(/^_+|_+$/g, "");
-            const pretty = (s) =>
-                String(s || "")
-                    .replace(/_/g, " ")
-                    .replace(/\b\w/g, (m) => m.toUpperCase());
             const lid = (...parts) => NS + "__" + parts.join("__");
             const isOurLayerId = (id) => id && id.indexOf(NS + "__") === 0;
             const splitId = (id) => (isOurLayerId(id) ? id.slice(NS.length + 2).split("__") : []);
             const safeDomId = (prefix, key) => prefix + "_" + btoa(key).replace(/=+/g, "");
+            const pretty = (s) =>
+                String(s || "")
+                    .replace(/_/g, " ")
+                    .replace(/\b\w/g, (m) => m.toUpperCase());
 
-            const BIKE_EXPR = ["any", [">", ["coalesce", ["to-number", ["get", "pista1"]], 0], 0], [">", ["coalesce", ["to-number", ["get", "pista2"]], 0], 0], ["==", ["get", "pista"], true], ["==", ["to-number", ["get", "pista_bicicleta"]], 1]];
-            const ILLEGAL_PARKING_EXPR = ["any", [">", ["coalesce", ["to-number", ["get", "free_trot1"]], 0], 0], [">", ["coalesce", ["to-number", ["get", "free_trot2"]], 0], 0]];
-            const RESERVED_PARKING_EXPR = [">", ["coalesce", ["to-number", ["get", "lung_park"]], 0], 0];
+            const BIKE_EXPR = ["==", ["get", "bike_lane"], true];
+            const ILLEGAL_PARKING_EXPR = ["==", ["get", "illgl_park"], true];
+            const RESERVED_PARKING_EXPR = ["==", ["get", "rsrvd_park"], true];
 
             const walkingColors = { "0-5": "#A7FFEB", "5-10": "#64FFDA", "10-15": "#18FFFF", "15+": "#00E5FF" };
             const cyclingColors = { "0-5": "#B388FF", "5-10": "#7C4DFF", "10-15": "#651FFF", "15+": "#6200EA" };
@@ -445,27 +440,50 @@
             }
 
             function indexData() {
-                const hoods = {};
+                // 1. Use neighborhood_limits.geojson as the source of truth for neighborhoods.
+                data.neighborhoods = [];
+                const slugToNameMap = new Map();
+                data.neighborhoodLimitsIndex = {};
+
+                if (data.neighborhoodLimits && data.neighborhoodLimits.features) {
+                    for (const feature of data.neighborhoodLimits.features) {
+                        const props = feature.properties;
+                        if (props && props.denumire && props.slug) {
+                            data.neighborhoods.push({ name: props.denumire, slug: props.slug });
+                            slugToNameMap.set(props.slug, props.denumire);
+                            data.neighborhoodLimitsIndex[props.slug] = feature;
+                        }
+                    }
+                }
+                data.neighborhoods.sort((a, b) => a.name.localeCompare(b.name));
+
+                // 2. Group streets by their neighborhood slug (`p.cartier`).
                 const byHood = {};
                 const feats = data.streets && data.streets.features ? data.streets.features : [];
                 for (let f of feats) {
                     const p = f.properties || {};
-                    const name = p.cartier || null;
-                    if (!name) continue;
-                    const hid = slug(name);
-                    if (!hoods[hid]) hoods[hid] = name;
+                    const hid = p.cartier || null; // This is the SLUG, as per your instruction.
+                    if (!hid || !slugToNameMap.has(hid)) {
+                        continue; // Skip streets with no valid neighborhood slug.
+                    }
+
                     if (!byHood[hid]) byHood[hid] = { features: [], schoolsSet: {} };
                     byHood[hid].features.push(f);
                     const s = p.arondat || null;
                     if (s) byHood[hid].schoolsSet[s] = true;
                 }
-                data.neighborhoods = Object.keys(hoods)
-                    .sort()
-                    .map((hid) => ({ slug: hid, name: hoods[hid] }));
+
+                // 3. Finalize the `byNeighborhood` data structure.
                 data.byNeighborhood = {};
-                for (let hid in byHood) {
-                    data.byNeighborhood[hid] = { features: byHood[hid].features, schools: Object.keys(byHood[hid].schoolsSet).sort() };
+                for (let { slug: hid } of data.neighborhoods) {
+                    const hoodData = byHood[hid] || { features: [], schoolsSet: {} };
+                    data.byNeighborhood[hid] = {
+                        features: hoodData.features,
+                        schools: Object.keys(hoodData.schoolsSet).sort(),
+                    };
                 }
+
+                // 4. Index schools.
                 data.schoolsIndex = {};
                 const sFeats = data.schools && data.schools.features ? data.schools.features : [];
                 for (let sf of sFeats) {
@@ -474,17 +492,6 @@
                     const numMatch = nm.match(/\d+/);
                     const sslug = numMatch ? "scoala_" + numMatch[0] : nm.trim().toLowerCase().replace(/\s+/g, "_");
                     data.schoolsIndex[sslug] = { name: nm, coord: sf.geometry && sf.geometry.coordinates, number: numMatch ? numMatch[0] : null };
-                }
-
-                data.neighborhoodLimitsIndex = {};
-                if (data.neighborhoodLimits && data.neighborhoodLimits.features) {
-                    for (const feature of data.neighborhoodLimits.features) {
-                        const name = feature.properties.denumire;
-                        if (name) {
-                            const hid = slug(name);
-                            data.neighborhoodLimitsIndex[hid] = feature;
-                        }
-                    }
                 }
             }
 
@@ -834,7 +841,7 @@
                     const hoodChipColor = hasBoundary ? "#00BFFF" : null;
                     const wrap = document.createElement("div");
                     wrap.className = "group";
-                    const hoodHeader = makeRow(hoodKey, "Cartier: " + pretty(hname), state.visible.get(hoodKey), hoodChipColor, true);
+                    const hoodHeader = makeRow(hoodKey, "Cartier: " + hname, state.visible.get(hoodKey), hoodChipColor, true);
 
                     if (hasBoundary) {
                         const clippingKey = lid(hid, "clipping");
@@ -1106,8 +1113,8 @@
                     for (const f of features) {
                         const p = f.properties;
                         if (!p) continue;
-                        if (p.pista1 > 0 || p.pista2 > 0 || p.pista === true || p.pista_bicicleta == 1) streetsWithBikeLanes++;
-                        if ((p.free_trot1 !== null && p.free_trot1 > 0) || (p.free_trot2 !== null && p.free_trot2 > 0)) streetsWithIllegalParking++;
+                        if (p.bike_lane === true) streetsWithBikeLanes++;
+                        if (p.illgl_park === true) streetsWithIllegalParking++;
                     }
                     return {
                         bikeLanePercentage: ((streetsWithBikeLanes / features.length) * 100).toFixed(1),
@@ -1123,11 +1130,12 @@
                 <hr>`;
 
                 data.neighborhoods.forEach((hood) => {
-                    const hoodFeatures = allFeatures.filter((f) => f.properties.cartier === hood.name);
+                    // Correctly filter by the slug, which is stored in `f.properties.cartier`
+                    const hoodFeatures = allFeatures.filter((f) => f.properties.cartier === hood.slug);
                     const hoodStats = calcStatsFor(hoodFeatures);
                     html += `
                     <details class="hood-details">
-                        <summary>${pretty(hood.name)}</summary>
+                        <summary>${hood.name}</summary>
                         <div class="stat-item"><span>Străzi cu pistă de biciclete:</span><b>${hoodStats.bikeLanePercentage}%</b></div>
                         <div class="stat-item"><span>Străzi cu parcare ilegală:</span><b>${hoodStats.illegalParkingPercentage}%</b></div>
                     </details>
@@ -1154,9 +1162,9 @@
                     const title = p.name || p.denumire || "Stradă";
 
                     let summary = "";
-                    const hasBikeLane = p.pista1 > 0 || p.pista2 > 0 || p.pista === true || p.pista_bicicleta == 1;
-                    const hasIllegalParking = p.free_trot1 > 0 || p.free_trot2 > 0;
-                    const hasReservedParking = p.lung_park > 0;
+                    const hasBikeLane = p.bike_lane === true;
+                    const hasIllegalParking = p.illgl_park === true;
+                    const hasReservedParking = p.rsrvd_park === true;
 
                     if (hasBikeLane) {
                         summary += `<p><span class="status-icon" style="color: #00FF88;">✔</span> Pistă de biciclete: <b>Da</b></p>`;
