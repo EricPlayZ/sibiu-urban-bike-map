@@ -45,6 +45,7 @@
                 margin: 0 0 8px 0;
                 font-size: 16px;
                 font-weight: 700;
+                padding-left: 30px; /* Make space for collapse button */
             }
             .group {
                 margin: 10px 0;
@@ -104,6 +105,7 @@
                 display: flex;
                 align-items: center;
                 gap: 8px;
+                padding-right: 42px; /* Make space for collapse button */
             }
             select {
                 padding: 6px 8px;
@@ -159,15 +161,12 @@
                 max-width: 350px;
                 font-size: 14px;
             }
-            .faq-panel summary {
+            .faq-panel h3 {
                 padding: 10px 14px;
                 font-weight: 700;
-                cursor: pointer;
-                outline: none;
-                user-select: none;
-            }
-            .faq-panel details[open] summary {
+                margin: 0;
                 border-bottom: 1px solid #eee;
+                padding-left: 30px; /* Space for collapse button */
             }
             .faq-content {
                 padding: 0 16px 12px 16px;
@@ -198,14 +197,14 @@
                 max-height: calc(100vh - 32px);
                 overflow-y: auto;
             }
-            .stats-panel summary {
+            .stats-panel h3 {
                 padding: 10px 14px;
                 font-weight: 700;
-                cursor: pointer;
+                cursor: default;
                 outline: none;
-            }
-            .stats-panel details[open] > summary {
+                margin: 0;
                 border-bottom: 1px solid #eee;
+                padding-right: 30px; /* Space for collapse button */
             }
             .stats-content {
                 padding: 4px 14px 12px 14px;
@@ -246,42 +245,137 @@
                 opacity: 1;
                 color: #007bff;
             }
+            .panel-toggle {
+                position: absolute;
+                z-index: 101;
+                background: var(--bg);
+                border-radius: 10px;
+                box-shadow: var(--shadow);
+                border: none;
+                cursor: pointer;
+                width: 38px;
+                height: 38px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 20px;
+                line-height: 1;
+                transition: background 0.2s;
+                user-select: none;
+            }
+            .panel-toggle:hover {
+                background: #f6f8ff;
+            }
+            #layers-toggle {
+                top: 16px;
+                left: 16px;
+            }
+            #stats-toggle {
+                top: 16px;
+                right: 16px;
+            }
+            #faq-toggle {
+                bottom: 16px;
+                left: 16px;
+            }
+            #basemap-toggle-btn {
+                bottom: 16px;
+                right: 16px;
+            }
+            .panel-collapse-btn {
+                position: absolute;
+                background: none;
+                border: none;
+                cursor: pointer;
+                width: 32px;
+                height: 32px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #aaa;
+                border-radius: 8px;
+                z-index: 1;
+            }
+            .panel-collapse-btn:hover {
+                background: #f0f0f0;
+                color: #111;
+            }
+            #layers-panel .panel-collapse-btn {
+                top: 6px;
+                left: 6px;
+            }
+            #stats-panel .panel-collapse-btn {
+                top: 6px;
+                right: 6px;
+            }
+            #faq-panel .panel-collapse-btn {
+                bottom: 6px;
+                left: 6px;
+            }
+            #footer-panel .panel-collapse-btn {
+                bottom: 6px;
+                right: 6px;
+            }
         </style>
     </head>
     <body>
         <div id="map"></div>
 
-        <div class="panel">
+        <button id="layers-toggle" class="panel-toggle" title="Straturi">☰</button>
+        <div class="panel" id="layers-panel">
+            <button class="panel-collapse-btn" title="Restrânge">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="17" y1="17" x2="7" y2="7"></line>
+                    <polyline points="7 17 7 7 17 7"></polyline>
+                </svg>
+            </button>
             <h3>Layere</h3>
             <div id="layers"></div>
         </div>
 
-        <div class="footer">
+        <button id="basemap-toggle-btn" class="panel-toggle" title="Hartă de bază">🗺️</button>
+        <div class="footer" id="footer-panel">
             <label for="basemap-toggle">Bază:</label>
             <select id="basemap-toggle"></select>
+            <button class="panel-collapse-btn" title="Restrânge">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="7" y1="7" x2="17" y2="17"></line>
+                    <polyline points="17 7 17 17 7 17"></polyline>
+                </svg>
+            </button>
         </div>
 
+        <button id="stats-toggle" class="panel-toggle" title="Statistici">📊</button>
         <div class="stats-panel" id="stats-panel">
-            <details open>
-                <summary>Statistici</summary>
-                <div class="stats-content" id="stats-content">Se încarcă...</div>
-            </details>
+            <button class="panel-collapse-btn" title="Restrânge">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="7" y1="17" x2="17" y2="7"></line>
+                    <polyline points="7 7 17 7 17 17"></polyline>
+                </svg>
+            </button>
+            <h3>Statistici</h3>
+            <div class="stats-content" id="stats-content">Se încarcă...</div>
         </div>
 
-        <div class="faq-panel">
-            <details>
-                <summary>Întrebări Frecvente (FAQ)</summary>
-                <div class="faq-content">
-                    <h4>Ce reprezintă stratul "Parcări ilegale pe trotuar"?</h4>
-                    <p>Acest strat evidențiază segmentele de stradă unde parcarea pe trotuar, deși practicată, nu lasă spațiul minim legal pentru pietoni, sau spațiu minim pentru piste de biciclete propuse. Conform legislației, trebuie asigurat un coridor liber de cel puțin 1 metru pentru pietoni.</p>
+        <button id="faq-toggle" class="panel-toggle" title="Întrebări Frecvente">?</button>
+        <div class="faq-panel" id="faq-panel">
+            <button class="panel-collapse-btn" title="Restrânge">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="17" y1="7" x2="7" y2="17"></line>
+                    <polyline points="17 17 7 17 7 7"></polyline>
+                </svg>
+            </button>
+            <h3>Întrebări Frecvente (FAQ)</h3>
+            <div class="faq-content">
+                <h4>Ce reprezintă stratul "Parcări ilegale pe trotuar"?</h4>
+                <p>Acest strat evidențiază segmentele de stradă unde parcarea pe trotuar, deși practicată, nu lasă spațiul minim legal pentru pietoni, sau spațiu minim pentru piste de biciclete propuse. Conform legislației, trebuie asigurat un coridor liber de cel puțin 1 metru pentru pietoni.</p>
 
-                    <h4>Ce înseamnă "Parcări amenajate pe trotuar"?</h4>
-                    <p>Acest strat indică zonele unde parcarea pe trotuar este amenajată și marcată, de obicei ca parcări rezidențiale.</p>
+                <h4>Ce înseamnă "Parcări amenajate pe trotuar"?</h4>
+                <p>Acest strat indică zonele unde parcarea pe trotuar este amenajată și marcată, de obicei ca parcări rezidențiale.</p>
 
-                    <h4>Ce sunt Izocronele?</h4>
-                    <p>O izocronă este o hartă care arată zonele ce pot fi atinse dintr-un punct dat într-un anumit interval de timp. Pe această hartă, benzile colorate din jurul unei școli arată cât de departe se poate ajunge pe jos (pietonal) sau cu bicicleta (ciclopietonal) în interval de 5, 10, respectiv 15 minute. Acest lucru ajută la vizualizarea accesibilității școlilor.</p>
-                </div>
-            </details>
+                <h4>Ce sunt Izocronele?</h4>
+                <p>O izocronă este o hartă care arată zonele ce pot fi atinse dintr-un punct dat într-un anumit interval de timp. Pe această hartă, benzile colorate din jurul unei școli arată cât de departe se poate ajunge pe jos (pietonal) sau cu bicicleta (ciclopietonal) în interval de 5, 10, respectiv 15 minute. Acest lucru ajută la vizualizarea accesibilității școlilor.</p>
+            </div>
         </div>
 
         <script>
@@ -401,6 +495,7 @@
                     calculateAndDisplayStats();
                     await prefetchIsochrones();
                     buildUI();
+                    setupPanelToggles();
                     state.preloaded = true;
                     if (map.isStyleLoaded()) reinstallOverlays();
                 } catch (e) {
@@ -818,7 +913,7 @@
                 for (let { slug: hid, name: hname } of data.neighborhoods) {
                     const hoodKey = lid(hid);
                     if (!state.visible.has(hoodKey)) state.visible.set(hoodKey, true);
-                    if (!state.expanded.has(hoodKey)) state.expanded.set(hoodKey, true);
+                    if (!state.expanded.has(hoodKey)) state.expanded.set(hoodKey, false);
                     const hasBoundary = !!data.neighborhoodLimitsIndex[hid];
                     const hoodChipColor = hasBoundary ? "#00BFFF" : null;
                     const wrap = document.createElement("div");
@@ -849,7 +944,7 @@
                     const bgKey = lid(hid, "bg");
                     if (!state.visible.has(streetsHeaderKey)) state.visible.set(streetsHeaderKey, true);
                     if (!state.visible.has(bgKey)) state.visible.set(bgKey, true);
-                    if (!state.expanded.has(streetsHeaderKey)) state.expanded.set(streetsHeaderKey, true);
+                    if (!state.expanded.has(streetsHeaderKey)) state.expanded.set(streetsHeaderKey, false);
                     const streetsHeader = makeRow(streetsHeaderKey, "Străzi", state.visible.get(streetsHeaderKey), "#666", true);
                     const streetsBody = document.createElement("div");
                     streetsBody.className = "indent";
@@ -868,15 +963,9 @@
                     streetsBody.appendChild(illegalParkingRow.row);
                     hoodBody.appendChild(streetsHeader.row);
                     hoodBody.appendChild(streetsBody);
-                    const schoolsHeaderKey = lid(hid, "schools");
-                    if (!state.visible.has(schoolsHeaderKey)) state.visible.set(schoolsHeaderKey, true);
-                    if (!state.expanded.has(schoolsHeaderKey)) state.expanded.set(schoolsHeaderKey, false);
-                    const schoolsHeader = makeRow(schoolsHeaderKey, "Școli", state.visible.get(schoolsHeaderKey), null, true);
-                    const schoolsBody = document.createElement("div");
-                    schoolsBody.className = "indent";
-                    schoolsBody.style.display = state.expanded.get(schoolsHeaderKey) === false ? "none" : "";
+
                     const schoolSlugs = data.byNeighborhood[hid].schools;
-                    for (let sslug of schoolSlugs) {
+                    const createSchoolUI = (sslug, parent) => {
                         const schoolKey = lid(hid, "schools", sslug);
                         if (!state.visible.has(schoolKey)) state.visible.set(schoolKey, true);
                         if (!state.expanded.has(schoolKey)) state.expanded.set(schoolKey, false);
@@ -911,154 +1000,141 @@
                         sBody.appendChild(assignedRow.row);
                         sBody.appendChild(isoHeader.row);
                         sBody.appendChild(isoBody);
-                        schoolsBody.appendChild(sHeader.row);
-                        schoolsBody.appendChild(sBody);
-                        sHeader.caretBtn.addEventListener(
-                            "click",
-                            ((key, body, caret) => () => {
-                                const cur = state.expanded.get(key) !== false;
-                                state.expanded.set(key, !cur);
-                                body.style.display = cur ? "none" : "";
-                                caret.textContent = cur ? "▸" : "▾";
-                            })(schoolKey, sBody, sHeader.caret)
-                        );
-                        isoHeader.caretBtn.addEventListener(
-                            "click",
-                            ((key, body, caret) => () => {
-                                const cur = state.expanded.get(key) !== false;
-                                state.expanded.set(key, !cur);
-                                body.style.display = cur ? "none" : "";
-                                caret.textContent = cur ? "▸" : "▾";
-                            })(isoHeaderKey, isoBody, isoHeader.caret)
-                        );
-                        sHeader.cb.addEventListener(
-                            "change",
-                            ((hid, sslug, schoolKey) =>
-                                function () {
-                                    state.visible.set(schoolKey, this.checked);
-                                    if (this.checked && (state.visible.get(lid(hid, "schools", sslug, "iso", "walk_fill")) === true || state.visible.get(lid(hid, "schools", sslug, "iso", "cycle_fill")) === true)) {
-                                        addIsoLayersIfNeeded(hid, sslug);
-                                    }
-                                    applyAllVisibility();
-                                    syncSchoolMarker(hid, sslug);
-                                })(hid, sslug, schoolKey)
-                        );
-                        assignedRow.cb.addEventListener(
-                            "change",
-                            ((k) =>
-                                function () {
-                                    state.visible.set(k, this.checked);
-                                    applyAllVisibility();
-                                })(assignedKey)
-                        );
-                        isoHeader.cb.addEventListener(
-                            "change",
-                            ((hid, sslug, isoKey) =>
-                                function () {
-                                    state.visible.set(isoKey, this.checked);
-                                    if (this.checked && (state.visible.get(lid(hid, "schools", sslug, "iso", "walk_fill")) === true || state.visible.get(lid(hid, "schools", sslug, "iso", "cycle_fill")) === true)) {
-                                        addIsoLayersIfNeeded(hid, sslug);
-                                    }
-                                    applyAllVisibility();
-                                })(hid, sslug, isoHeaderKey)
-                        );
-                        walkRow.cb.addEventListener(
-                            "change",
-                            ((hid, sslug, keys) =>
-                                function () {
-                                    keys.forEach((k) => state.visible.set(k, this.checked));
-                                    addIsoLayersIfNeeded(hid, sslug);
-                                    applyAllVisibility();
-                                })(hid, sslug, [walkFill, walkStroke])
-                        );
-                        cycleRow.cb.addEventListener(
-                            "change",
-                            ((hid, sslug, keys) =>
-                                function () {
-                                    keys.forEach((k) => state.visible.set(k, this.checked));
-                                    addIsoLayersIfNeeded(hid, sslug);
-                                    applyAllVisibility();
-                                })(hid, sslug, [cycleFill, cycleStroke])
-                        );
+                        parent.appendChild(sHeader.row);
+                        parent.appendChild(sBody);
+                        sHeader.caretBtn.addEventListener("click", () => {
+                            const cur = state.expanded.get(schoolKey) !== false;
+                            state.expanded.set(schoolKey, !cur);
+                            sBody.style.display = cur ? "none" : "";
+                            sHeader.caret.textContent = cur ? "▸" : "▾";
+                        });
+                        isoHeader.caretBtn.addEventListener("click", () => {
+                            const cur = state.expanded.get(isoHeaderKey) !== false;
+                            state.expanded.set(isoHeaderKey, !cur);
+                            isoBody.style.display = cur ? "none" : "";
+                            isoHeader.caret.textContent = cur ? "▸" : "▾";
+                        });
+                        return { sHeader, assignedRow, isoHeader, walkRow, cycleRow, schoolKey, assignedKey, isoHeaderKey, walkFill, walkStroke, cycleFill, cycleStroke };
+                    };
+
+                    if (schoolSlugs.length === 1) {
+                        const sslug = schoolSlugs[0];
+                        const schoolsHeaderKey = lid(hid, "schools");
+                        if (!state.visible.has(schoolsHeaderKey)) state.visible.set(schoolsHeaderKey, true);
+                        const ui = createSchoolUI(sslug, hoodBody);
+                        ui.sHeader.cb.addEventListener("change", function () {
+                            state.visible.set(ui.schoolKey, this.checked);
+                            state.visible.set(schoolsHeaderKey, this.checked);
+                            if (this.checked && (state.visible.get(ui.walkFill) === true || state.visible.get(ui.cycleFill) === true)) addIsoLayersIfNeeded(hid, sslug);
+                            applyAllVisibility();
+                            syncSchoolMarker(hid, sslug);
+                        });
+                        ui.assignedRow.cb.addEventListener("change", function () {
+                            state.visible.set(ui.assignedKey, this.checked);
+                            applyAllVisibility();
+                        });
+                        ui.isoHeader.cb.addEventListener("change", function () {
+                            state.visible.set(ui.isoHeaderKey, this.checked);
+                            if (this.checked && (state.visible.get(ui.walkFill) === true || state.visible.get(ui.cycleFill) === true)) addIsoLayersIfNeeded(hid, sslug);
+                            applyAllVisibility();
+                        });
+                        ui.walkRow.cb.addEventListener("change", function () {
+                            [ui.walkFill, ui.walkStroke].forEach((k) => state.visible.set(k, this.checked));
+                            addIsoLayersIfNeeded(hid, sslug);
+                            applyAllVisibility();
+                        });
+                        ui.cycleRow.cb.addEventListener("change", function () {
+                            [ui.cycleFill, ui.cycleStroke].forEach((k) => state.visible.set(k, this.checked));
+                            addIsoLayersIfNeeded(hid, sslug);
+                            applyAllVisibility();
+                        });
+                    } else if (schoolSlugs.length > 1) {
+                        const schoolsHeaderKey = lid(hid, "schools");
+                        if (!state.visible.has(schoolsHeaderKey)) state.visible.set(schoolsHeaderKey, true);
+                        if (!state.expanded.has(schoolsHeaderKey)) state.expanded.set(schoolsHeaderKey, false);
+                        const schoolsHeader = makeRow(schoolsHeaderKey, "Școli", state.visible.get(schoolsHeaderKey), null, true);
+                        const schoolsBody = document.createElement("div");
+                        schoolsBody.className = "indent";
+                        schoolsBody.style.display = state.expanded.get(schoolsHeaderKey) === false ? "none" : "";
+                        for (let sslug of schoolSlugs) {
+                            const ui = createSchoolUI(sslug, schoolsBody);
+                            ui.sHeader.cb.addEventListener("change", function () {
+                                state.visible.set(ui.schoolKey, this.checked);
+                                if (this.checked && (state.visible.get(ui.walkFill) === true || state.visible.get(ui.cycleFill) === true)) addIsoLayersIfNeeded(hid, sslug);
+                                applyAllVisibility();
+                                syncSchoolMarker(hid, sslug);
+                            });
+                            ui.assignedRow.cb.addEventListener("change", function () {
+                                state.visible.set(ui.assignedKey, this.checked);
+                                applyAllVisibility();
+                            });
+                            ui.isoHeader.cb.addEventListener("change", function () {
+                                state.visible.set(ui.isoHeaderKey, this.checked);
+                                if (this.checked && (state.visible.get(ui.walkFill) === true || state.visible.get(ui.cycleFill) === true)) addIsoLayersIfNeeded(hid, sslug);
+                                applyAllVisibility();
+                            });
+                            ui.walkRow.cb.addEventListener("change", function () {
+                                [ui.walkFill, ui.walkStroke].forEach((k) => state.visible.set(k, this.checked));
+                                addIsoLayersIfNeeded(hid, sslug);
+                                applyAllVisibility();
+                            });
+                            ui.cycleRow.cb.addEventListener("change", function () {
+                                [ui.cycleFill, ui.cycleStroke].forEach((k) => state.visible.set(k, this.checked));
+                                addIsoLayersIfNeeded(hid, sslug);
+                                applyAllVisibility();
+                            });
+                        }
+                        hoodBody.appendChild(schoolsHeader.row);
+                        hoodBody.appendChild(schoolsBody);
+                        schoolsHeader.caretBtn.addEventListener("click", () => {
+                            const cur = state.expanded.get(schoolsHeaderKey) !== false;
+                            state.expanded.set(schoolsHeaderKey, !cur);
+                            schoolsBody.style.display = cur ? "none" : "";
+                            schoolsHeader.caret.textContent = cur ? "▸" : "▾";
+                        });
+                        schoolsHeader.cb.addEventListener("change", function () {
+                            state.visible.set(schoolsHeaderKey, this.checked);
+                            applyAllVisibility();
+                            syncAllMarkers();
+                        });
                     }
-                    hoodBody.appendChild(schoolsHeader.row);
-                    hoodBody.appendChild(schoolsBody);
+
                     wrap.appendChild(hoodBody);
                     host.appendChild(wrap);
-                    hoodHeader.caretBtn.addEventListener(
-                        "click",
-                        ((key, body, caret) => () => {
-                            const cur = state.expanded.get(key) !== false;
-                            state.expanded.set(key, !cur);
-                            body.style.display = cur ? "none" : "";
-                            caret.textContent = cur ? "▸" : "▾";
-                        })(hoodKey, hoodBody, hoodHeader.caret)
-                    );
-                    hoodHeader.cb.addEventListener(
-                        "change",
-                        ((hoodKey) =>
-                            function () {
-                                state.visible.set(hoodKey, this.checked);
-                                applyAllVisibility();
-                                syncAllMarkers();
-                            })(hoodKey)
-                    );
-                    streetsHeader.caretBtn.addEventListener(
-                        "click",
-                        ((key, body, caret) => () => {
-                            const cur = state.expanded.get(key) !== false;
-                            state.expanded.set(key, !cur);
-                            body.style.display = cur ? "none" : "";
-                            caret.textContent = cur ? "▸" : "▾";
-                        })(streetsHeaderKey, streetsBody, streetsHeader.caret)
-                    );
+                    hoodHeader.caretBtn.addEventListener("click", () => {
+                        const cur = state.expanded.get(hoodKey) !== false;
+                        state.expanded.set(hoodKey, !cur);
+                        hoodBody.style.display = cur ? "none" : "";
+                        hoodHeader.caret.textContent = cur ? "▸" : "▾";
+                    });
+                    hoodHeader.cb.addEventListener("change", function () {
+                        state.visible.set(hoodKey, this.checked);
+                        applyAllVisibility();
+                        syncAllMarkers();
+                    });
+                    streetsHeader.caretBtn.addEventListener("click", () => {
+                        const cur = state.expanded.get(streetsHeaderKey) !== false;
+                        state.expanded.set(streetsHeaderKey, !cur);
+                        streetsBody.style.display = cur ? "none" : "";
+                        streetsHeader.caret.textContent = cur ? "▸" : "▾";
+                    });
                     streetsHeader.cb.addEventListener("change", function () {
                         state.visible.set(streetsHeaderKey, this.checked);
                         state.visible.set(bgKey, this.checked);
                         applyAllVisibility();
                     });
-                    bikeRow.cb.addEventListener(
-                        "change",
-                        ((k) =>
-                            function () {
-                                state.visible.set(k, this.checked);
-                                applyAllVisibility();
-                            })(bikeKey)
-                    );
-                    reservedParkingRow.cb.addEventListener(
-                        "change",
-                        ((k) =>
-                            function () {
-                                state.visible.set(k, this.checked);
-                                applyAllVisibility();
-                            })(reservedParkingKey)
-                    );
-                    illegalParkingRow.cb.addEventListener(
-                        "change",
-                        ((k) =>
-                            function () {
-                                state.visible.set(k, this.checked);
-                                applyAllVisibility();
-                            })(illegalParkingKey)
-                    );
-                    schoolsHeader.caretBtn.addEventListener(
-                        "click",
-                        ((key, body, caret) => () => {
-                            const cur = state.expanded.get(key) !== false;
-                            state.expanded.set(key, !cur);
-                            body.style.display = cur ? "none" : "";
-                            caret.textContent = cur ? "▸" : "▾";
-                        })(schoolsHeaderKey, schoolsBody, schoolsHeader.caret)
-                    );
-                    schoolsHeader.cb.addEventListener(
-                        "change",
-                        ((prefix) =>
-                            function () {
-                                state.visible.set(prefix, this.checked);
-                                applyAllVisibility();
-                                syncAllMarkers();
-                            })(schoolsHeaderKey)
-                    );
+                    bikeRow.cb.addEventListener("change", function () {
+                        state.visible.set(bikeKey, this.checked);
+                        applyAllVisibility();
+                    });
+                    reservedParkingRow.cb.addEventListener("change", function () {
+                        state.visible.set(reservedParkingKey, this.checked);
+                        applyAllVisibility();
+                    });
+                    illegalParkingRow.cb.addEventListener("change", function () {
+                        state.visible.set(illegalParkingKey, this.checked);
+                        applyAllVisibility();
+                    });
                 }
             }
 
@@ -1148,6 +1224,36 @@
                     map.on("click", handleClick);
                     clickBound = true;
                 }
+            }
+
+            function setupPanelToggles() {
+                const configs = [
+                    { buttonId: "layers-toggle", panelId: "layers-panel" },
+                    { buttonId: "stats-toggle", panelId: "stats-panel" },
+                    { buttonId: "faq-toggle", panelId: "faq-panel" },
+                    { buttonId: "basemap-toggle-btn", panelId: "footer-panel" },
+                ];
+
+                configs.forEach(({ buttonId, panelId }) => {
+                    const button = document.getElementById(buttonId);
+                    const panel = document.getElementById(panelId);
+                    const collapseBtn = panel.querySelector(".panel-collapse-btn");
+
+                    panel.style.display = "none";
+                    button.style.display = "flex";
+
+                    button.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        panel.style.display = "";
+                        button.style.display = "none";
+                    });
+
+                    collapseBtn.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        panel.style.display = "none";
+                        button.style.display = "flex";
+                    });
+                });
             }
         </script>
     </body>
