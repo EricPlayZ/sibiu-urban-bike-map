@@ -55,8 +55,10 @@ export const BIKE_EXPR = ["==", ["get", "bike_lane"], true];
 export const ILLEGAL_PARKING_EXPR = ["==", ["get", "illgl_park"], true];
 export const RESERVED_PARKING_EXPR = ["==", ["get", "rsrvd_park"], true];
 
-export const walkingColors = { "0-5": "#A7FFEB", "5-10": "#64FFDA", "10-15": "#18FFFF", "15+": "#00E5FF" };
-export const cyclingColors = { "0-5": "#B388FF", "5-10": "#7C4DFF", "10-15": "#651FFF", "15+": "#6200EA" };
+//export const walkingColors = { "0-5": "#A7FFEB", "5-10": "#64FFDA", "10-15": "#18FFFF", "15+": "#00E5FF" };
+//export const cyclingColors = { "0-5": "#B388FF", "5-10": "#7C4DFF", "10-15": "#651FFF", "15+": "#6200EA" };
+export const walkingColors = { "0-5": "#A7FFEB", "5-10": "#A7FFEB", "10-15": "#64FFDA", "15+": "#64FFDA" };
+export const cyclingColors = { "0-5": "#B388FF", "5-10": "#B388FF", "10-15": "#7C4DFF", "15+": "#7C4DFF" };
 export const bandColorExpr = (colors) => ["match", ["get", "band"], "0-5", colors["0-5"], "5-10", colors["5-10"], "10-15", colors["10-15"], "15+", colors["15+"], colors["0-5"]];
 export const BAND_OPACITY_EXPR = ["match", ["get", "band"], "0-5", 0.65, "5-10", 0.55, "10-15", 0.45, "15+", 0.35, 0.5];
 export const BAND_SORT_KEY_EXPR = ["match", ["get", "band"], "0-5", 3, "5-10", 2, "10-15", 1, "15+", 0, 0];
