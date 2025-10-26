@@ -462,9 +462,9 @@
                 const feats = data.streets && data.streets.features ? data.streets.features : [];
                 for (let f of feats) {
                     const p = f.properties || {};
-                    const hid = p.cartier || null; // This is the SLUG, as per your instruction.
+                    const hid = p.cartier || null; // This is the SLUG.
                     if (!hid || !slugToNameMap.has(hid)) {
-                        continue; // Skip streets with no valid neighborhood slug.
+                        continue;
                     }
 
                     if (!byHood[hid]) byHood[hid] = { features: [], schoolsSet: {} };
@@ -481,22 +481,31 @@
                         features: hoodData.features,
                         schools: Object.keys(hoodData.schoolsSet).sort(),
                     };
+                    console.log("Neighborhood", hid, "has", hoodData.features.length, "street features and", Object.keys(hoodData.schoolsSet).length, "schools assigned.");
                 }
 
-                // 4. Index schools.
+                // 4. Index schools using the 'slug' property directly.
                 data.schoolsIndex = {};
                 const sFeats = data.schools && data.schools.features ? data.schools.features : [];
                 for (let sf of sFeats) {
                     const sp = sf.properties || {};
+                    const sslug = sp.slug; // <-- CORRECT: Use the slug from the GeoJSON.
+                    if (!sslug) {
+                        console.warn("School feature is missing a 'slug' property, skipping:", sp);
+                        continue;
+                    }
                     const nm = sp.denumire || sp.name || "";
                     const numMatch = nm.match(/\d+/);
-                    const sslug = numMatch ? "scoala_" + numMatch[0] : nm.trim().toLowerCase().replace(/\s+/g, "_");
-                    data.schoolsIndex[sslug] = { name: nm, coord: sf.geometry && sf.geometry.coordinates, number: numMatch ? numMatch[0] : null };
+
+                    data.schoolsIndex[sslug] = {
+                        name: nm,
+                        coord: sf.geometry && sf.geometry.coordinates,
+                        number: numMatch ? numMatch[0] : null,
+                    };
                 }
             }
 
             async function prefetchIsochrones() {
-                // 1. Initialize the data structure
                 data.isochrones = {};
                 for (let sslug in data.schoolsIndex) {
                     data.isochrones[sslug] = {
@@ -506,51 +515,41 @@
                 }
 
                 try {
-                    // 2. Fetch the single consolidated file
                     const response = await fetch("school_isochrones.geojson", { cache: "no-store" });
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
                     const allIsochrones = await response.json();
 
-                    // 3. Process and distribute the features
                     if (allIsochrones && allIsochrones.features) {
                         for (const feature of allIsochrones.features) {
                             const p = feature.properties;
                             if (!p || !p.den_scoala || !p.tip || p.cost_level === undefined) continue;
 
                             const sslug = p.den_scoala;
-                            const type = p.tip; // 'pietonal' or 'ciclopietonal'
+                            const type = p.tip;
                             const cost = p.cost_level;
 
-                            // Assign the 'band' property required by the map styling expressions
                             if (cost <= 300) feature.properties.band = "0-5";
                             else if (cost <= 600) feature.properties.band = "5-10";
                             else if (cost <= 900) feature.properties.band = "10-15";
                             else feature.properties.band = "15+";
 
-                            // Ensure the school exists in our index
                             if (data.isochrones[sslug]) {
-                                if (type === "pietonal") {
+                                if (type === "walking") {
                                     data.isochrones[sslug].walk.features.push(feature);
-                                } else if (type === "ciclopietonal") {
+                                } else if (type === "cycling") {
                                     data.isochrones[sslug].cycle.features.push(feature);
                                 }
                             }
                         }
                     }
-                    // After processing, check if any school has no isochrones and set to null to avoid errors
                     for (let sslug in data.isochrones) {
-                        if (data.isochrones[sslug].walk.features.length === 0) {
-                            data.isochrones[sslug].walk = null;
-                        }
-                        if (data.isochrones[sslug].cycle.features.length === 0) {
-                            data.isochrones[sslug].cycle = null;
-                        }
+                        if (data.isochrones[sslug].walk.features.length === 0) data.isochrones[sslug].walk = null;
+                        if (data.isochrones[sslug].cycle.features.length === 0) data.isochrones[sslug].cycle = null;
                     }
                 } catch (e) {
                     console.error("Failed to load or process school_isochrones.geojson:", e);
-                    // Set all to null if the file fails to load
                     for (let sslug in data.isochrones) {
                         data.isochrones[sslug].walk = null;
                         data.isochrones[sslug].cycle = null;
@@ -569,9 +568,7 @@
 
             function createMaskGeoJSON(boundaryFeature) {
                 if (!boundaryFeature || !boundaryFeature.geometry || !boundaryFeature.geometry.coordinates) return null;
-                // Works for both Polygon and MultiPolygon (takes the first polygon's exterior ring)
                 const boundaryCoords = boundaryFeature.geometry.type === "Polygon" ? boundaryFeature.geometry.coordinates[0] : boundaryFeature.geometry.coordinates[0][0];
-
                 return {
                     type: "Feature",
                     geometry: {
@@ -618,7 +615,6 @@
                         streetLayerIds.push(assignedId);
                     }
 
-                    // Dynamically add boundary limits for any neighborhood that has one
                     const boundaryFeature = data.neighborhoodLimitsIndex[hid];
                     if (boundaryFeature) {
                         const limitSrcId = lid(hid, "limit_src");
@@ -676,27 +672,19 @@
                 map.once("idle", () => {
                     const allLayers = map.getStyle().layers;
                     const ourLayerIds = allLayers.map((l) => l.id).filter((id) => isOurLayerId(id));
-
                     const layerGroups = {
                         isos: ourLayerIds.filter((id) => id.includes("__iso_")),
                         streets: ourLayerIds.filter((id) => !id.includes("__iso_") && !id.includes("__limit") && !id.includes("__mask")),
                         masks: ourLayerIds.filter((id) => id.includes("__mask")),
                         limits: ourLayerIds.filter((id) => id.includes("__limit")),
                     };
-
                     const firstMapLabel = allLayers.find((l) => l.type === "symbol")?.id;
-
-                    // Order: isochrones, streets, then boundary masks, then boundary lines, then map labels
                     const orderedLayers = [...layerGroups.isos, ...layerGroups.streets, ...layerGroups.masks, ...layerGroups.limits];
-
                     for (const layerId of orderedLayers) {
                         if (map.getLayer(layerId)) {
                             try {
-                                if (firstMapLabel) {
-                                    map.moveLayer(layerId, firstMapLabel);
-                                } else {
-                                    map.moveLayer(layerId);
-                                }
+                                if (firstMapLabel) map.moveLayer(layerId, firstMapLabel);
+                                else map.moveLayer(layerId);
                             } catch (e) {
                                 console.warn(`Could not move layer ${layerId}:`, e.message);
                             }
@@ -710,12 +698,8 @@
                 if (!parts.length) return null;
                 const keys = [];
                 const hid = parts[0];
-
-                // Boundary layers depend on the main neighborhood toggle and their own clipping toggle
                 if (parts[1] === "limit") return [lid(hid)];
                 if (parts[1] === "mask") return [lid(hid), lid(hid, "clipping")];
-
-                // Street layers
                 keys.push(lid(hid));
                 if (parts[1] === "bg") {
                     keys.push(lid(hid, "streets"));
@@ -726,7 +710,6 @@
                     keys.push(lid(hid, parts[1]));
                     return keys;
                 }
-                // School layers
                 if (parts[1] === "schools") {
                     keys.push(lid(hid, "schools"));
                     if (parts.length >= 3) {
@@ -775,13 +758,13 @@
                     }
                 }
             }
+
             function syncSchoolMarker(hid, sslug) {
                 const key = lid(hid, "schools", sslug);
                 const req = [lid(hid), lid(hid, "schools"), key];
                 const eff = req.every((k) => state.visible.get(k) === true);
                 const idx = data.schoolsIndex[sslug];
                 if (!idx || !idx.coord) return;
-
                 const existing = state.markers.get(key);
                 if (eff && !existing) {
                     const el = document.createElement("button");
@@ -836,13 +819,11 @@
                     const hoodKey = lid(hid);
                     if (!state.visible.has(hoodKey)) state.visible.set(hoodKey, true);
                     if (!state.expanded.has(hoodKey)) state.expanded.set(hoodKey, true);
-
                     const hasBoundary = !!data.neighborhoodLimitsIndex[hid];
                     const hoodChipColor = hasBoundary ? "#00BFFF" : null;
                     const wrap = document.createElement("div");
                     wrap.className = "group";
-                    const hoodHeader = makeRow(hoodKey, "Cartier: " + hname, state.visible.get(hoodKey), hoodChipColor, true);
-
+                    const hoodHeader = makeRow(hoodKey, "Cartierul " + hname, state.visible.get(hoodKey), hoodChipColor, true);
                     if (hasBoundary) {
                         const clippingKey = lid(hid, "clipping");
                         if (!state.visible.has(clippingKey)) state.visible.set(clippingKey, false);
@@ -851,7 +832,6 @@
                         clipBtn.title = "Taie la limită";
                         clipBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>`;
                         if (state.visible.get(clippingKey)) clipBtn.classList.add("active");
-
                         clipBtn.addEventListener("click", (e) => {
                             e.stopPropagation();
                             const isActive = !state.visible.get(clippingKey);
@@ -861,13 +841,10 @@
                         });
                         hoodHeader.row.appendChild(clipBtn);
                     }
-
                     wrap.appendChild(hoodHeader.row);
-
                     const hoodBody = document.createElement("div");
                     hoodBody.className = "indent";
                     hoodBody.style.display = state.expanded.get(hoodKey) === false ? "none" : "";
-
                     const streetsHeaderKey = lid(hid, "streets");
                     const bgKey = lid(hid, "bg");
                     if (!state.visible.has(streetsHeaderKey)) state.visible.set(streetsHeaderKey, true);
@@ -877,24 +854,20 @@
                     const streetsBody = document.createElement("div");
                     streetsBody.className = "indent";
                     streetsBody.style.display = state.expanded.get(streetsHeaderKey) === false ? "none" : "";
-
                     const bikeKey = lid(hid, "bike");
                     if (!state.visible.has(bikeKey)) state.visible.set(bikeKey, true);
                     const reservedParkingKey = lid(hid, "reserved_parking");
                     if (!state.visible.has(reservedParkingKey)) state.visible.set(reservedParkingKey, true);
                     const illegalParkingKey = lid(hid, "illegal_parking");
                     if (!state.visible.has(illegalParkingKey)) state.visible.set(illegalParkingKey, true);
-
                     const bikeRow = makeRow(bikeKey, "Pistă de biciclete", state.visible.get(bikeKey), "#00FF88", false);
                     const reservedParkingRow = makeRow(reservedParkingKey, "Parcări amenajate pe trotuar", state.visible.get(reservedParkingKey), "#F50057", false);
                     const illegalParkingRow = makeRow(illegalParkingKey, "Parcări ilegale pe trotuar", state.visible.get(illegalParkingKey), "#FFD600", false);
-
                     streetsBody.appendChild(bikeRow.row);
                     streetsBody.appendChild(reservedParkingRow.row);
                     streetsBody.appendChild(illegalParkingRow.row);
                     hoodBody.appendChild(streetsHeader.row);
                     hoodBody.appendChild(streetsBody);
-
                     const schoolsHeaderKey = lid(hid, "schools");
                     if (!state.visible.has(schoolsHeaderKey)) state.visible.set(schoolsHeaderKey, true);
                     if (!state.expanded.has(schoolsHeaderKey)) state.expanded.set(schoolsHeaderKey, false);
@@ -902,22 +875,18 @@
                     const schoolsBody = document.createElement("div");
                     schoolsBody.className = "indent";
                     schoolsBody.style.display = state.expanded.get(schoolsHeaderKey) === false ? "none" : "";
-
                     const schoolSlugs = data.byNeighborhood[hid].schools;
                     for (let sslug of schoolSlugs) {
                         const schoolKey = lid(hid, "schools", sslug);
                         if (!state.visible.has(schoolKey)) state.visible.set(schoolKey, true);
                         if (!state.expanded.has(schoolKey)) state.expanded.set(schoolKey, false);
-
                         const sHeader = makeRow(schoolKey, data.schoolsIndex[sslug] ? data.schoolsIndex[sslug].name : pretty(sslug), state.visible.get(schoolKey), null, true);
                         const sBody = document.createElement("div");
                         sBody.className = "indent";
                         sBody.style.display = state.expanded.get(schoolKey) === false ? "none" : "";
-
                         const assignedKey = lid(hid, "schools", sslug, "assigned");
                         if (!state.visible.has(assignedKey)) state.visible.set(assignedKey, false);
                         const assignedRow = makeRow(assignedKey, "Străzi arondate", state.visible.get(assignedKey), "#ff9100", false);
-
                         const isoHeaderKey = lid(hid, "schools", sslug, "iso");
                         if (!state.visible.has(isoHeaderKey)) state.visible.set(isoHeaderKey, true);
                         if (!state.expanded.has(isoHeaderKey)) state.expanded.set(isoHeaderKey, false);
@@ -925,22 +894,18 @@
                         const isoBody = document.createElement("div");
                         isoBody.className = "indent";
                         isoBody.style.display = state.expanded.get(isoHeaderKey) === false ? "none" : "";
-
                         const walkFill = lid(hid, "schools", sslug, "iso", "walk_fill");
                         const walkStroke = lid(hid, "schools", sslug, "iso", "walk_stroke");
                         const cycleFill = lid(hid, "schools", sslug, "iso", "cycle_fill");
                         const cycleStroke = lid(hid, "schools", sslug, "iso", "cycle_stroke");
-
                         [walkFill, walkStroke].forEach((k) => {
                             if (!state.visible.has(k)) state.visible.set(k, false);
                         });
                         [cycleFill, cycleStroke].forEach((k) => {
                             if (!state.visible.has(k)) state.visible.set(k, true);
                         });
-
                         const walkRow = makeRow(walkFill, "Pietonal", state.visible.get(walkFill), walkingColors["10-15"], false);
                         const cycleRow = makeRow(cycleFill, "Ciclopietonal", state.visible.get(cycleFill), cyclingColors["10-15"], false);
-
                         isoBody.appendChild(walkRow.row);
                         isoBody.appendChild(cycleRow.row);
                         sBody.appendChild(assignedRow.row);
@@ -948,7 +913,6 @@
                         sBody.appendChild(isoBody);
                         schoolsBody.appendChild(sHeader.row);
                         schoolsBody.appendChild(sBody);
-
                         sHeader.caretBtn.addEventListener(
                             "click",
                             ((key, body, caret) => () => {
@@ -1017,12 +981,10 @@
                                 })(hid, sslug, [cycleFill, cycleStroke])
                         );
                     }
-
                     hoodBody.appendChild(schoolsHeader.row);
                     hoodBody.appendChild(schoolsBody);
                     wrap.appendChild(hoodBody);
                     host.appendChild(wrap);
-
                     hoodHeader.caretBtn.addEventListener(
                         "click",
                         ((key, body, caret) => () => {
@@ -1041,7 +1003,6 @@
                                 syncAllMarkers();
                             })(hoodKey)
                     );
-
                     streetsHeader.caretBtn.addEventListener(
                         "click",
                         ((key, body, caret) => () => {
@@ -1080,7 +1041,6 @@
                                 applyAllVisibility();
                             })(illegalParkingKey)
                     );
-
                     schoolsHeader.caretBtn.addEventListener(
                         "click",
                         ((key, body, caret) => () => {
@@ -1105,7 +1065,6 @@
             function calculateAndDisplayStats() {
                 const allFeatures = data.streets && data.streets.features ? data.streets.features : [];
                 if (allFeatures.length === 0) return;
-
                 const calcStatsFor = (features) => {
                     if (features.length === 0) return { bikeLanePercentage: "0.0", illegalParkingPercentage: "0.0" };
                     let streetsWithBikeLanes = 0;
@@ -1121,16 +1080,13 @@
                         illegalParkingPercentage: ((streetsWithIllegalParking / features.length) * 100).toFixed(1),
                     };
                 };
-
                 const globalStats = calcStatsFor(allFeatures);
                 let html = `
                 <h4>Total Oraș</h4>
                 <div class="stat-item"><span>Străzi cu pistă de biciclete:</span><b>${globalStats.bikeLanePercentage}%</b></div>
                 <div class="stat-item"><span>Străzi cu parcare ilegală:</span><b>${globalStats.illegalParkingPercentage}%</b></div>
                 <hr>`;
-
                 data.neighborhoods.forEach((hood) => {
-                    // Correctly filter by the slug, which is stored in `f.properties.cartier`
                     const hoodFeatures = allFeatures.filter((f) => f.properties.cartier === hood.slug);
                     const hoodStats = calcStatsFor(hoodFeatures);
                     html += `
@@ -1141,7 +1097,6 @@
                     </details>
                 `;
                 });
-
                 document.getElementById("stats-content").innerHTML = html;
             }
 
@@ -1153,41 +1108,33 @@
                     });
                     hoverCursorBound = true;
                 }
-
                 const handleClick = function (e) {
                     const feats = map.queryRenderedFeatures(e.point, { layers: streetLayerIds });
                     if (!feats || !feats.length) return;
                     const f = feats[0];
                     const p = f.properties || {};
                     const title = p.name || p.denumire || "Stradă";
-
                     let summary = "";
                     const hasBikeLane = p.bike_lane === true;
                     const hasIllegalParking = p.illgl_park === true;
                     const hasReservedParking = p.rsrvd_park === true;
-
                     if (hasBikeLane) {
                         summary += `<p><span class="status-icon" style="color: #00FF88;">✔</span> Pistă de biciclete: <b>Da</b></p>`;
                     } else {
                         summary += `<p><span class="status-icon" style="color: #ff4d4d;">✖</span> Pistă de biciclete: <b>Nu</b></p>`;
                     }
-
                     if (hasIllegalParking) {
                         summary += `<p><span class="status-icon" style="color: #FFD600;">⚠</span> Parcări ilegale pe trotuar: <b>Da</b></p>`;
                     }
-
                     if (hasReservedParking) {
                         summary += `<p><span class="status-icon" style="color: #F50057;">🅿️</span> Parcări amenajate pe trotuar: <b>Da</b></p>`;
                     }
-
                     if (p.arondat && data.schoolsIndex[p.arondat]) {
                         summary += `<p><span class="status-icon">🏫</span> Arondată la: <b>${data.schoolsIndex[p.arondat].name}</b></p>`;
                     }
-
                     if (summary === "") {
                         summary = "<p>Nu există date specifice pentru această stradă.</p>";
                     }
-
                     const html = `
             <div style="max-width:320px">
               <img class="popup-img" src="assets/street-example.jpg" alt="Exemplu stradă" />
@@ -1195,10 +1142,8 @@
               <div class="popup-summary">${summary}</div>
             </div>
           `;
-
                     new maplibregl.Popup({ closeOnClick: true, maxWidth: "320px" }).setLngLat(e.lngLat).setHTML(html).addTo(map);
                 };
-
                 if (!clickBound) {
                     map.on("click", handleClick);
                     clickBound = true;

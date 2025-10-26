@@ -3,7 +3,8 @@
 "name": "schools",
 "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
 "features": [
-{ "type": "Feature", "properties": { "id": 0, "denumire": "Scoala Gimnaziala nr. 4" }, "geometry": { "type": "Point", "coordinates": [ 24.161622469242058, 45.790926009674656 ] } },
-{ "type": "Feature", "properties": { "id": 1, "denumire": "Școala Gimnazială \"Ion Luca Caragiale\"" }, "geometry": { "type": "Point", "coordinates": [ 24.141507894258314, 45.776648210052507 ] } }
+{ "type": "Feature", "properties": { "id": 0, "denumire": "Scoala Gimnaziala nr. 4", "slug": "scoala_4" }, "geometry": { "type": "Point", "coordinates": [ 24.161622469242058, 45.790926009674656 ] } },
+{ "type": "Feature", "properties": { "id": 1, "denumire": "Școala Gimnazială \"Ion Luca Caragiale\"", "slug": "scoala_caragiale" }, "geometry": { "type": "Point", "coordinates": [ 24.141507894258314, 45.776648210052507 ] } },
+{ "type": "Feature", "properties": { "id": 2, "denumire": "Școala Gimnazială nr. 8", "slug": "scoala_8" }, "geometry": { "type": "Point", "coordinates": [ 24.165130147403435, 45.803944518770685 ] } }
 ]
 }
