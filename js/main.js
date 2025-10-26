@@ -43,11 +43,22 @@ function indexData() {
         data.byNeighborhood[hid] = {
             features: hoodData.features,
             schools: Object.keys(hoodData.schoolsSet).sort(),
+            buildingCount: 0, // Initialize building count
         };
         console.log("Neighborhood", hid, "has", hoodData.features.length, "street features and", Object.keys(hoodData.schoolsSet).length, "schools assigned.");
     }
 
-    // 4. Index schools using the 'slug' property directly.
+    // 4. Count buildings per neighborhood.
+    const buildingFeats = data.buildings && data.buildings.features ? data.buildings.features : [];
+    for (const building of buildingFeats) {
+        const p = building.properties || {};
+        const hid = p.cartier || null;
+        if (hid && data.byNeighborhood[hid]) {
+            data.byNeighborhood[hid].buildingCount++;
+        }
+    }
+
+    // 5. Index schools using the 'slug' property directly.
     data.schoolsIndex = {};
     const sFeats = data.schools && data.schools.features ? data.schools.features : [];
     for (let sf of sFeats) {
@@ -122,10 +133,11 @@ async function prefetchIsochrones() {
 
 (async function preloadAll() {
     try {
-        const [streets, schools, neighborhoodLimits] = await Promise.all([fetch("streets.geojson", { cache: "no-store" }).then((r) => r.json()), fetch("schools.geojson", { cache: "no-store" }).then((r) => r.json()), fetch("neighborhood_limits.geojson", { cache: "no-store" }).then((r) => r.json())]);
+        const [streets, schools, neighborhoodLimits, buildings] = await Promise.all([fetch("streets.geojson", { cache: "no-store" }).then((r) => r.json()), fetch("schools.geojson", { cache: "no-store" }).then((r) => r.json()), fetch("neighborhood_limits.geojson", { cache: "no-store" }).then((r) => r.json()), fetch("buildings.geojson", { cache: "no-store" }).then((r) => r.json())]);
         data.streets = streets;
         data.schools = schools;
         data.neighborhoodLimits = neighborhoodLimits;
+        data.buildings = buildings;
         indexData();
         calculateAndDisplayStats();
         await prefetchIsochrones();

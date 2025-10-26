@@ -56,7 +56,7 @@ export function buildUI() {
             const clipBtn = document.createElement("button");
             clipBtn.className = "clip-btn";
             clipBtn.title = "Taie la limită";
-            clipBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>`;
+            clipBtn.innerHTML = `<svg width="18" height="18" viewBox="0- 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>`;
             if (state.visible.get(clippingKey)) clipBtn.classList.add("active");
             clipBtn.addEventListener("click", (e) => {
                 e.stopPropagation();
@@ -271,7 +271,9 @@ export function buildUI() {
 
 export function calculateAndDisplayStats() {
     const allFeatures = data.streets && data.streets.features ? data.streets.features : [];
+    const allBuildings = data.buildings && data.buildings.features ? data.buildings.features : [];
     if (allFeatures.length === 0) return;
+
     const calcStatsFor = (features) => {
         if (features.length === 0) return { bikeLanePercentage: "0.0", illegalParkingPercentage: "0.0" };
         let streetsWithBikeLanes = 0;
@@ -287,19 +289,27 @@ export function calculateAndDisplayStats() {
             illegalParkingPercentage: ((streetsWithIllegalParking / features.length) * 100).toFixed(1),
         };
     };
+
     const globalStats = calcStatsFor(allFeatures);
+    const totalBuildings = allBuildings.length;
+
     let html = `
     <h4>Total Oraș</h4>
+    <div class="stat-item"><span>Clădiri (estimat):</span><b>${totalBuildings.toLocaleString("en-US")}</b></div>
     <div class="stat-item"><span>Străzi cu pistă de biciclete:</span><b>${globalStats.bikeLanePercentage}%</b></div>
     <div class="stat-item"><span>Străzi cu parcare ilegală:</span><b>${globalStats.illegalParkingPercentage}%</b></div>
     <hr>`;
+
     data.neighborhoods.forEach((hood) => {
         const hoodFeatures = allFeatures.filter((f) => f.properties.cartier === hood.slug);
         const hoodStats = calcStatsFor(hoodFeatures);
+        const hoodBuildingCount = data.byNeighborhood[hood.slug] ? data.byNeighborhood[hood.slug].buildingCount : 0;
+
         html += `
         <details class="hood-details">
-            <summary>${hood.name}</summary>
+            <summary><b>${hood.name}</b></summary>
             <div>
+                <div class="stat-item"><span>Clădiri (estimat):</span><b>${hoodBuildingCount.toLocaleString("en-US")}</b></div>
                 <div class="stat-item"><span>Străzi cu pistă de biciclete:</span><b>${hoodStats.bikeLanePercentage}%</b></div>
                 <div class="stat-item"><span>Străzi cu parcare ilegală:</span><b>${hoodStats.illegalParkingPercentage}%</b></div>
             </div>

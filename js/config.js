@@ -66,6 +66,7 @@ export const data = {
     streets: null,
     schools: null,
     neighborhoodLimits: null,
+    buildings: null,
     neighborhoods: [],
     byNeighborhood: {},
     schoolsIndex: {},
