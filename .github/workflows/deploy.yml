@@ -1,0 +1,46 @@
+name: Deploy mapthecity
+
+on:
+  push:
+    branches:
+      - feat/react-vite-rewrite
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-mapthecity
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # Self-hosted runner on the Linux box that already has Docker + your compose stack.
+    # Does NOT copy app source — Docker rebuilds from the GitHub build context.
+    runs-on: self-hosted
+    steps:
+      - name: Rebuild from GitHub and reload
+        env:
+          COMPOSE_DIR: ${{ vars.COMPOSE_DIR }}
+        run: |
+          set -euo pipefail
+          if [ -z "${COMPOSE_DIR}" ]; then
+            echo "Set repository variable COMPOSE_DIR to your compose folder on the server."
+            exit 1
+          fi
+          cd "${COMPOSE_DIR}"
+          # Uses build.context from GitHub; GITHUB_TOKEN comes from this folder's .env
+          docker compose up -d --build --force-recreate mapthecity
+          docker image prune -f
+
+      - name: Health check
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if docker exec mapthecity wget -qO- http://127.0.0.1/healthz >/dev/null; then
+              echo "Healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Container did not become healthy"
+          docker ps -a --filter name=mapthecity
+          docker logs --tail=80 mapthecity || true
+          exit 1
