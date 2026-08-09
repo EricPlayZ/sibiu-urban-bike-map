@@ -18,13 +18,12 @@ jobs:
     steps:
       - name: Rebuild from GitHub and reload
         env:
-          COMPOSE_DIR: ${{ vars.COMPOSE_DIR }}
+          # Hardcoded path — vars.COMPOSE_DIR was empty on the runner despite being set in UI.
+          # Override via repo variable if it starts resolving; otherwise this default is used.
+          COMPOSE_DIR: ${{ vars.COMPOSE_DIR || '/opt/stacks/mapthecity' }}
         run: |
           set -euo pipefail
-          if [ -z "${COMPOSE_DIR}" ]; then
-            echo "Set repository variable COMPOSE_DIR to your compose folder on the server."
-            exit 1
-          fi
+          echo "Using COMPOSE_DIR=${COMPOSE_DIR}"
           cd "${COMPOSE_DIR}"
           # Uses build.context from GitHub; GITHUB_TOKEN comes from this folder's .env
           docker compose up -d --build --force-recreate mapthecity
