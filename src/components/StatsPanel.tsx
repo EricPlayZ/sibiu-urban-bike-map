@@ -2,11 +2,13 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { useApp } from "../store";
 import {
-  featureHasBikeLane,
   featureHasIllegalParking,
   featureHasReservedParking,
   hasAnyEdit,
   LAYER_COLORS,
+  resolveStreetMeasurement,
+  streetHasDoorZoneBikeLane,
+  streetHasSafeBikeLane,
 } from "../lib/space";
 
 function streetLengthM(props: Record<string, unknown>) {
@@ -27,30 +29,48 @@ export function StatsPanel() {
   const streets = useApp((s) => s.streets);
   const schools = useApp((s) => s.schools);
   const measurements = useApp((s) => s.measurements);
+  const seedMeasurements = useApp((s) => s.seedMeasurements);
   const filters = useApp((s) => s.filters);
   const layers = useApp((s) => s.layers);
   const editMode = useApp((s) => s.editMode);
 
   const selected = new Set(filters.neighborhoods);
-  // Doar străzi din cartierele selectate (fără cele fără cartier — altfel cifra e înșelătoare)
+  const selectedSchools = new Set(filters.schools);
   const feats = (streets?.features || []).filter((f) => {
     const cartier = String((f.properties as { cartier?: string })?.cartier || "").trim();
     return Boolean(cartier) && selected.has(cartier);
   });
 
-  const bikeFeats = feats.filter((f) => featureHasBikeLane(f.properties as Record<string, unknown>));
-  const illegalFeats = feats.filter((f) => featureHasIllegalParking(f.properties as Record<string, unknown>));
-  const reservedFeats = feats.filter((f) => featureHasReservedParking(f.properties as Record<string, unknown>));
-  const assigned = feats.filter((f) => Boolean(String((f.properties as { arondat?: string })?.arondat || "").trim())).length;
-  const editedLocal = Object.values(measurements).filter(hasAnyEdit).length;
-  const schoolCount = schools?.features.length || 0;
+  const resolved = feats.map((f) => {
+    const props = (f.properties || {}) as Record<string, unknown>;
+    const sid = String(props.sid || "");
+    const m = resolveStreetMeasurement(sid, props, measurements, seedMeasurements);
+    return { f, props, m };
+  });
 
-  const bike = bikeFeats.length;
+  const safeBikeFeats = resolved.filter(({ props, m }) => streetHasSafeBikeLane(props, m));
+  const doorBikeFeats = resolved.filter(({ props, m }) => streetHasDoorZoneBikeLane(props, m));
+  const illegalFeats = resolved.filter(({ props }) => featureHasIllegalParking(props));
+  const reservedFeats = resolved.filter(({ props }) => featureHasReservedParking(props));
+  const assigned = feats.filter((f) => {
+    const slug = String((f.properties as { arondat?: string })?.arondat || "").trim();
+    return Boolean(slug) && selectedSchools.has(slug);
+  }).length;
+  const editedLocal = Object.values(measurements).filter(hasAnyEdit).length;
+  const schoolCount = (schools?.features || []).filter((f) => {
+    const slug = String((f.properties as { slug?: string })?.slug || "");
+    return !slug || selectedSchools.has(slug);
+  }).length;
+
+  const safeBike = safeBikeFeats.length;
+  const doorBike = doorBikeFeats.length;
   const illegal = illegalFeats.length;
   const reserved = reservedFeats.length;
-  const bikeM = bikeFeats.reduce((s, f) => s + streetLengthM((f.properties || {}) as Record<string, unknown>), 0);
-  const illegalM = illegalFeats.reduce((s, f) => s + streetLengthM((f.properties || {}) as Record<string, unknown>), 0);
-  const reservedM = reservedFeats.reduce((s, f) => s + streetLengthM((f.properties || {}) as Record<string, unknown>), 0);
+  const safeBikeM = safeBikeFeats.reduce((s, { props }) => s + streetLengthM(props), 0);
+  const doorBikeM = doorBikeFeats.reduce((s, { props }) => s + streetLengthM(props), 0);
+  const bikeM = safeBikeM + doorBikeM;
+  const illegalM = illegalFeats.reduce((s, { props }) => s + streetLengthM(props), 0);
+  const reservedM = reservedFeats.reduce((s, { props }) => s + streetLengthM(props), 0);
 
   const legend: { color: string; label: string }[] = [];
   if (layers.buildings) {
@@ -62,7 +82,8 @@ export function StatsPanel() {
     );
   } else {
     if (layers.streetsBase) legend.push({ color: LAYER_COLORS.base, label: "Stradă (bază)" });
-    if (layers.bike && bike > 0) legend.push({ color: LAYER_COLORS.bike, label: "Pistă biciclete" });
+    if (layers.bike && safeBike > 0) legend.push({ color: LAYER_COLORS.bike, label: "Pistă biciclete" });
+    if (layers.bikeDoor && doorBike > 0) legend.push({ color: LAYER_COLORS.bikeDoor, label: "Pistă pe carosabil" });
     if (layers.reserved && reserved > 0) legend.push({ color: LAYER_COLORS.reserved, label: "Parcare amenajată pe trotuar" });
     if (layers.illegal && illegal > 0) legend.push({ color: LAYER_COLORS.illegal, label: "Parcare ilegală pe trotuar" });
     if (layers.schoolAssign && assigned > 0) {
@@ -101,8 +122,15 @@ export function StatsPanel() {
           <div className="stat-row">
             <span>Pistă biciclete</span>
             <b>
-              {bike}
-              {bikeM > 0 ? <small> · {formatKm(bikeM)} km</small> : null}
+              {safeBike}
+              {safeBikeM > 0 ? <small> · {formatKm(safeBikeM)} km</small> : null}
+            </b>
+          </div>
+          <div className="stat-row">
+            <span>Pistă pe carosabil</span>
+            <b>
+              {doorBike}
+              {doorBikeM > 0 ? <small> · {formatKm(doorBikeM)} km</small> : null}
             </b>
           </div>
           <div className="stat-row">
@@ -136,7 +164,7 @@ export function StatsPanel() {
             </div>
           )}
 
-          <p className="stats-note">Valorile urmează cartierele selectate în Filtre. Culorile din legendă urmează straturile active pe hartă.</p>
+          <p className="stats-note">Valorile urmează cartierele și școlile selectate în Filtre.</p>
           <div className="legend-mini">
             {legend.map((item) => (
               <span key={item.label}>

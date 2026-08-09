@@ -16,6 +16,7 @@ const BLD = "bld";
 const STREET_HIT_LAYERS = [
   "streets-illegal",
   "streets-reserved",
+  "streets-bike-door",
   "streets-bike",
   "streets-school",
   "streets-edit",
@@ -184,8 +185,12 @@ export function MapView() {
     schoolMarkersRef.current = [];
     if (!map || !ready || !layers.schoolMarkers || !schools) return;
 
+    const selectedSchools = new Set(useApp.getState().filters.schools);
+
     for (const f of schools.features) {
       if (!f.geometry || f.geometry.type !== "Point") continue;
+      const slug = String((f.properties as { slug?: string })?.slug || "");
+      if (slug && !selectedSchools.has(slug)) continue;
       const [lng, lat] = f.geometry.coordinates;
       const name = String((f.properties as { denumire?: string })?.denumire || "Școală");
       const el = document.createElement("button");
@@ -219,7 +224,7 @@ export function MapView() {
       schoolMarkersRef.current.forEach((m) => m.remove());
       schoolMarkersRef.current = [];
     };
-  }, [layers.schoolMarkers, schools, ready, basemap]);
+  }, [layers.schoolMarkers, schools, ready, basemap, filters]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -262,15 +267,17 @@ export function MapView() {
         clearStreetPopup();
         return;
       }
-      const p = (hits[0].properties || {}) as Record<string, unknown>;
-      const sid = String(p.sid || "");
+      const hitProps = (hits[0].properties || {}) as Record<string, unknown>;
+      const sid = String(hitProps.sid || "");
+      const rawFeat = st.streets?.features.find((f) => String((f.properties as { sid?: string })?.sid || "") === sid);
+      const p = ((rawFeat?.properties || hitProps) as Record<string, unknown>);
       const name = String(p.name || "Stradă");
 
       // În vizualizare: popup pe hartă (ca originalul). În editare: panoul de detalii.
       if (!st.editMode) {
         st.closeSheet();
         clearStreetPopup();
-        const html = streetPopupHtml(p, st.schools);
+        const html = streetPopupHtml(p, st.schools, st.measurementForStreet(sid, p));
         streetPopupRef.current = new maplibregl.Popup({
           closeOnClick: true,
           maxWidth: "320px",
@@ -401,6 +408,7 @@ function applyLayerVisibility(map: Map) {
 
   setVis(map, "streets-base", layers.streetsBase || editMode);
   setVis(map, "streets-bike", layers.bike);
+  setVis(map, "streets-bike-door", layers.bikeDoor);
   setVis(map, "streets-reserved", layers.reserved);
   setVis(map, "streets-illegal", layers.illegal);
   setVis(map, "streets-school", layers.schoolAssign);
@@ -426,6 +434,7 @@ function ensureOverlayOrder(map: Map) {
     "streets-base",
     "streets-school",
     "streets-bike",
+    "streets-bike-door",
     "streets-reserved",
     "streets-illegal",
     "streets-halo",
@@ -541,9 +550,10 @@ function addSourcesAndLayers(map: Map) {
     visibility: "none",
     dash: [1.4, 1.1],
   });
-  ensureFlagLine("streets-bike", "bike_lane", "off_bike", LAYER_COLORS.bike, 5.5);
-  ensureFlagLine("streets-reserved", "rsrvd_park", "off_rsv", LAYER_COLORS.reserved, 5.5);
-  ensureFlagLine("streets-illegal", "illgl_park", "off_ill", LAYER_COLORS.illegal, 5.5);
+  ensureFlagLine("streets-bike", "show_bike", "off_bike", LAYER_COLORS.bike, 5.5);
+  ensureFlagLine("streets-bike-door", "show_bike_door", "off_door", LAYER_COLORS.bikeDoor, 5.5);
+  ensureFlagLine("streets-reserved", "show_rsrvd", "off_rsv", LAYER_COLORS.reserved, 5.5);
+  ensureFlagLine("streets-illegal", "show_illgl", "off_ill", LAYER_COLORS.illegal, 5.5);
 
   if (!map.getLayer("streets-halo")) {
     map.addLayer({
@@ -604,7 +614,6 @@ function addBuildingLayers(map: Map) {
       id: BLD + "-fill",
       type: "fill",
       source: BLD,
-      minzoom: 13,
       layout: { visibility: "none" },
       paint: {
         "fill-color": ["match", ["get", "ubr_type"], "casa", "#2f9e44", "bloc", "#e03131", "altceva", "#868e96", "#ced4da"],
@@ -617,11 +626,13 @@ function addBuildingLayers(map: Map) {
       id: BLD + "-line",
       type: "line",
       source: BLD,
-      minzoom: 15,
       layout: { visibility: "none" },
       paint: { "line-color": "#111", "line-width": 0.4, "line-opacity": 0.35 },
     });
   }
+  // Keep buildings visible when zoomed out (older sessions may still have a high minzoom).
+  if (map.getLayer(BLD + "-fill")) map.setLayerZoomRange(BLD + "-fill", 0, 24);
+  if (map.getLayer(BLD + "-line")) map.setLayerZoomRange(BLD + "-line", 0, 24);
 }
 
 function empty(): GeoJSON.FeatureCollection {

@@ -3,6 +3,7 @@ import type { ViewMode } from "./space";
 export type MapLayerId =
   | "streetsBase"
   | "bike"
+  | "bikeDoor"
   | "reserved"
   | "illegal"
   | "schoolAssign"
@@ -16,7 +17,12 @@ export type FocusId = "hideEmpty" | "illegalOnly" | "bikeOnly";
 
 export const LAYER_META: { id: MapLayerId; label: string; hint: string }[] = [
   { id: "streetsBase", label: "Străzi (bază)", hint: "Linia gri pentru toate străzile" },
-  { id: "bike", label: "Pistă biciclete", hint: "Segmente cu bike_lane din date" },
+  { id: "bike", label: "Pistă biciclete", hint: "Pistă fără mașini parcate pe lângă ea" },
+  {
+    id: "bikeDoor",
+    label: "Pistă pe carosabil",
+    hint: "Între carosabil și mașinile parcate — fără protecție",
+  },
   { id: "reserved", label: "Parcare amenajată", hint: "Parcare pe trotuar amenajată" },
   { id: "illegal", label: "Parcare ilegală", hint: "Parcare ilegală pe trotuar" },
   { id: "schoolAssign", label: "Arondare școli", hint: "Străzi arondate unei școli" },
@@ -29,6 +35,7 @@ export const VIEW_PRESETS: Record<ViewMode, LayerVisibility> = {
   space: {
     streetsBase: false,
     bike: true,
+    bikeDoor: true,
     reserved: true,
     illegal: true,
     schoolAssign: false,
@@ -39,6 +46,7 @@ export const VIEW_PRESETS: Record<ViewMode, LayerVisibility> = {
   buildings: {
     streetsBase: false,
     bike: false,
+    bikeDoor: false,
     reserved: false,
     illegal: false,
     schoolAssign: false,
@@ -48,9 +56,10 @@ export const VIEW_PRESETS: Record<ViewMode, LayerVisibility> = {
   },
   schools: {
     streetsBase: false,
-    bike: true,
-    reserved: true,
-    illegal: true,
+    bike: false,
+    bikeDoor: false,
+    reserved: false,
+    illegal: false,
     schoolAssign: true,
     schoolMarkers: true,
     buildings: false,
@@ -66,6 +75,7 @@ export const FOCUS_PRESETS: Record<FocusId, Partial<LayerVisibility>> = {
   illegalOnly: {
     streetsBase: false,
     bike: false,
+    bikeDoor: false,
     reserved: false,
     illegal: true,
     schoolAssign: false,
@@ -73,6 +83,7 @@ export const FOCUS_PRESETS: Record<FocusId, Partial<LayerVisibility>> = {
   bikeOnly: {
     streetsBase: false,
     bike: true,
+    bikeDoor: true,
     reserved: false,
     illegal: false,
     schoolAssign: false,

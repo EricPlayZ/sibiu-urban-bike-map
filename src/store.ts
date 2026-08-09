@@ -9,6 +9,7 @@ import {
   loadCustomNeighborhoods,
   loadMeasurements,
   migrateV1,
+  normalizeSeedCatalog,
   purgeAllMeasurements,
   purgeEmptyOrFlagOnlyMeasurements,
   purgeExcelSeedMeasurements,
@@ -17,13 +18,16 @@ import {
   saveMeasurement,
 } from "./lib/store";
 import {
-  featureHasBikeLane,
-  featureHasIllegalParking,
   featureHasReservedParking,
   hasAnyEdit,
   makeBuildingId,
   makeStreetId,
+  resolveStreetMeasurement,
   slugify,
+  streetHasBikeLane,
+  streetHasDoorZoneBikeLane,
+  streetHasIllegalParking,
+  streetHasSafeBikeLane,
   streetPaintColor,
   LAYER_COLORS,
 } from "./lib/space";
@@ -33,6 +37,8 @@ import { VIEW_PRESETS, FOCUS_PRESETS, type FocusId, type LayerVisibility, type M
 type Filters = {
   /** Slug-uri cartiere selectate (multi). Goale = nimic pe hartă. */
   neighborhoods: string[];
+  /** Slug-uri școli selectate — controlează markere + străzi arondate. */
+  schools: string[];
 };
 
 type Selected =
@@ -63,11 +69,14 @@ type AppState = {
   streets: GeoJSON.FeatureCollection | null;
   neighborhoods: GeoJSON.FeatureCollection | null;
   measurements: Record<string, Measurement>;
+  /** Catalog măsurători din measurements-seed.json (cheie cartier::strada). */
+  seedMeasurements: Record<string, Measurement>;
   buildingTypes: Record<string, { type: string }>;
   buildings: GeoJSON.FeatureCollection | null;
   schools: GeoJSON.FeatureCollection | null;
   buildingCounts: { total: number; by_neighborhood: Record<string, number> };
   neighborhoodList: { slug: string; name: string }[];
+  schoolList: { slug: string; name: string }[];
   toast: string | null;
 
   init: () => Promise<void>;
@@ -82,6 +91,8 @@ type AppState = {
   setFilter: <K extends keyof Filters>(k: K, v: Filters[K]) => void;
   toggleNeighborhood: (slug: string) => void;
   toggleAllNeighborhoods: () => void;
+  toggleSchool: (slug: string) => void;
+  toggleAllSchools: () => void;
   toggleFilters: () => void;
   closeFilters: () => void;
   closeStats: () => void;
@@ -105,6 +116,7 @@ type AppState = {
   ensureBuildings: () => Promise<void>;
   paintedStreets: () => GeoJSON.FeatureCollection | null;
   paintedNeighborhoods: () => GeoJSON.FeatureCollection | null;
+  measurementForStreet: (id: string, props?: Record<string, unknown> | null) => Measurement;
   showToast: (msg: string) => void;
   doExport: () => void;
 };
@@ -120,7 +132,7 @@ export const useApp = create<AppState>((set, get) => ({
   layers: { ...VIEW_PRESETS.space },
   basemap: defaultBasemapForTheme(loadUiTheme()),
   uiTheme: loadUiTheme(),
-  filters: { neighborhoods: [] },
+  filters: { neighborhoods: [], schools: [] },
   filtersOpen: false,
   basemapOpen: false,
   statsOpen: true,
@@ -131,11 +143,13 @@ export const useApp = create<AppState>((set, get) => ({
   streets: null,
   neighborhoods: null,
   measurements: {},
+  seedMeasurements: {},
   buildingTypes: {},
   buildings: null,
   schools: null,
   buildingCounts: { total: 0, by_neighborhood: {} },
   neighborhoodList: [],
+  schoolList: [],
   toast: null,
 
   showToast: (msg) => {
@@ -146,7 +160,7 @@ export const useApp = create<AppState>((set, get) => ({
   init: async () => {
     applyDocumentTheme(get().uiTheme);
     set({ loadingMsg: "Încărcăm străzile…" });
-    const [streets, limits, counts, schools] = await Promise.all([
+    const [streets, limits, counts, schools, seedRaw] = await Promise.all([
       fetch("./streets.geojson").then((r) => r.json()) as Promise<GeoJSON.FeatureCollection>,
       fetch("./neighborhood_limits.geojson").then((r) => r.json()) as Promise<GeoJSON.FeatureCollection>,
       fetch("./data/buildings-counts.json")
@@ -158,6 +172,9 @@ export const useApp = create<AppState>((set, get) => ({
       fetch("./schools.geojson")
         .then((r) => r.json())
         .catch(() => ({ type: "FeatureCollection", features: [] })) as Promise<GeoJSON.FeatureCollection>,
+      fetch("./data/measurements-seed.json")
+        .then((r) => r.json())
+        .catch(() => ({})) as Promise<unknown>,
     ]);
 
     streets.features.forEach((f, i) => {
@@ -165,13 +182,21 @@ export const useApp = create<AppState>((set, get) => ({
       (f.properties as { sid: string }).sid = makeStreetId(f, i);
     });
 
-    // Fără Excel: doar streets.geojson + editări locale (și curățăm seed-ul vechi din localStorage)
+    // Curățăm seed-ul vechi din localStorage; catalogul rămâne în seedMeasurements (read-only).
     purgeExcelSeedMeasurements();
     migrateV1(streets);
     purgeEmptyOrFlagOnlyMeasurements();
 
     const custom = loadCustomNeighborhoods();
     const neighborhoodList = (limits.features || [])
+      .map((f) => {
+        const p = f.properties as { slug?: string; denumire?: string; name?: string };
+        return { slug: p.slug || "", name: p.denumire || p.name || p.slug || "" };
+      })
+      .filter((n) => n.slug)
+      .sort((a, b) => a.name.localeCompare(b.name, "ro"));
+
+    const schoolList = (schools.features || [])
       .map((f) => {
         const p = f.properties as { slug?: string; denumire?: string; name?: string };
         return { slug: p.slug || "", name: p.denumire || p.name || p.slug || "" };
@@ -186,13 +211,16 @@ export const useApp = create<AppState>((set, get) => ({
         features: [...(limits.features || []), ...(custom.features || [])],
       },
       measurements: loadMeasurements(),
+      seedMeasurements: normalizeSeedCatalog(seedRaw),
       buildingTypes: loadBuildingTypes(),
       buildingCounts: counts,
       schools,
       neighborhoodList,
+      schoolList,
       filters: {
         ...get().filters,
         neighborhoods: neighborhoodList.map((n) => n.slug),
+        schools: schoolList.map((s) => s.slug),
       },
       ready: true,
       loadingMsg: "",
@@ -269,6 +297,17 @@ export const useApp = create<AppState>((set, get) => ({
     const cur = get().filters.neighborhoods;
     const allOn = list.length > 0 && list.every((s) => cur.includes(s));
     set({ filters: { ...get().filters, neighborhoods: allOn ? [] : list } });
+  },
+  toggleSchool: (slug) => {
+    const cur = get().filters.schools;
+    const next = cur.includes(slug) ? cur.filter((s) => s !== slug) : [...cur, slug];
+    set({ filters: { ...get().filters, schools: next } });
+  },
+  toggleAllSchools: () => {
+    const list = get().schoolList.map((s) => s.slug);
+    const cur = get().filters.schools;
+    const allOn = list.length > 0 && list.every((s) => cur.includes(s));
+    set({ filters: { ...get().filters, schools: allOn ? [] : list } });
   },
   toggleFilters: () =>
     set({ filtersOpen: !get().filtersOpen, basemapOpen: false, themeOpen: false, statsOpen: false, editsOpen: false }),
@@ -434,39 +473,56 @@ export const useApp = create<AppState>((set, get) => ({
     set({ buildings: { type: "FeatureCollection", features }, loadingMsg: "" });
   },
 
+  measurementForStreet: (id, props) => {
+    const p = props || (() => {
+      const f = get().streets?.features.find((x) => String((x.properties as { sid?: string })?.sid) === id);
+      return (f?.properties || {}) as Record<string, unknown>;
+    })();
+    return resolveStreetMeasurement(id, p, get().measurements, get().seedMeasurements);
+  },
+
   paintedStreets: () => {
-    const { streets, measurements, filters, layers, editMode } = get();
+    const { streets, measurements, seedMeasurements, filters, layers, editMode } = get();
     if (!streets) return null;
     const selected = new Set(filters.neighborhoods);
+    const selectedSchools = new Set(filters.schools);
     const features: GeoJSON.Feature[] = [];
     for (const f of streets.features) {
       const raw = (f.properties || {}) as Record<string, unknown>;
       const sid = String(raw.sid || "");
-      const m = measurements[sid];
+      const m = resolveStreetMeasurement(sid, raw, measurements, seedMeasurements);
       const cartier = String(raw.cartier || "");
       const showData = !cartier || selected.has(cartier);
 
-      const rawBike = featureHasBikeLane(raw);
-      const rawIllegal = featureHasIllegalParking(raw);
+      const rawBike = streetHasBikeLane(raw, m);
+      const rawIllegal = streetHasIllegalParking(raw, m);
       const rawReserved = featureHasReservedParking(raw);
-      const rawSchool = Boolean(String(raw.arondat || "").trim());
-      const hasLocal = hasAnyEdit(m);
-      // Străzile doar-școală: ascunse în Spațiu fără strat arondare — DAR apar ca bază dacă streetsBase / edit
+      const schoolSlug = String(raw.arondat || "").trim();
+      const rawSchool = Boolean(schoolSlug);
+      const schoolSelected = !schoolSlug || selectedSchools.has(schoolSlug);
+      const hasLocal = hasAnyEdit(measurements[sid]);
+      // Străzile doar-școală: ascunse fără strat arondare — DAR apar ca bază dacă streetsBase / edit
       const onlySchool = rawSchool && !rawBike && !rawIllegal && !rawReserved && !hasLocal;
       if (!layers.schoolAssign && onlySchool && !layers.streetsBase && !editMode) continue;
+      // Școală neselectată: ascunde străzile doar-arondate acelei școli
+      if (onlySchool && !schoolSelected && !layers.streetsBase && !editMode) continue;
 
+      // Păstrăm flag-urile semantice din geojson; show_* controlează doar vizibilitatea pe hartă.
       const p: Record<string, unknown> = { ...raw };
-      p.bike_lane = showData && layers.bike && rawBike ? 1 : 0;
-      p.illgl_park = showData && layers.illegal && rawIllegal ? 1 : 0;
-      p.rsrvd_park = showData && layers.reserved && rawReserved ? 1 : 0;
-      p.has_arondat = showData && layers.schoolAssign && rawSchool ? 1 : 0;
-      p.arondat = String(raw.arondat || "");
+      const safeBike = streetHasSafeBikeLane(raw, m);
+      const doorBike = streetHasDoorZoneBikeLane(raw, m);
+      p.show_bike = showData && layers.bike && safeBike ? 1 : 0;
+      p.show_bike_door = showData && layers.bikeDoor && doorBike ? 1 : 0;
+      p.show_illgl = showData && layers.illegal && rawIllegal ? 1 : 0;
+      p.show_rsrvd = showData && layers.reserved && rawReserved ? 1 : 0;
+      p.has_arondat = showData && layers.schoolAssign && rawSchool && schoolSelected ? 1 : 0;
+      p.arondat = schoolSlug;
 
       const edited = editMode && showData && hasLocal;
       p.edited = edited ? 1 : 0;
-      p.color = edited ? streetPaintColor(m, "space") : LAYER_COLORS.base;
+      p.color = edited ? streetPaintColor(measurements[sid], "space") : LAYER_COLORS.base;
 
-      const hasVisibleGeo = Boolean(p.bike_lane || p.illgl_park || p.rsrvd_park || p.has_arondat);
+      const hasVisibleGeo = Boolean(p.show_bike || p.show_bike_door || p.show_illgl || p.show_rsrvd || p.has_arondat);
       if (!layers.streetsBase && !editMode && !hasVisibleGeo && !edited) continue;
 
       assignFlagOffsets(p, { includeSchool: layers.schoolAssign, includeEdit: edited });

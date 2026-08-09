@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
-import { Bike, CheckCheck, Eye, Leaf, ParkingSquare, Ruler, X } from "lucide-react";
+import { Bike, CheckCheck, Eye, GraduationCap, Leaf, ParkingSquare, Ruler, X } from "lucide-react";
 import { useApp } from "../store";
 import { LAYER_META, layersMatchFocus, layersMatchPreset } from "../lib/layers";
 
@@ -28,8 +28,11 @@ export function FiltersPanel() {
   const applyFocus = useApp((s) => s.applyFocus);
   const clearFocus = useApp((s) => s.clearFocus);
   const neighborhoodList = useApp((s) => s.neighborhoodList);
+  const schoolList = useApp((s) => s.schoolList);
   const toggleNeighborhood = useApp((s) => s.toggleNeighborhood);
   const toggleAllNeighborhoods = useApp((s) => s.toggleAllNeighborhoods);
+  const toggleSchool = useApp((s) => s.toggleSchool);
+  const toggleAllSchools = useApp((s) => s.toggleAllSchools);
   const desktop = useIsDesktop();
 
   useLayoutEffect(() => {
@@ -43,6 +46,9 @@ export function FiltersPanel() {
   const selected = new Set(filters.neighborhoods);
   const allOn = neighborhoodList.length > 0 && neighborhoodList.every((n) => selected.has(n.slug));
   const selectedCount = filters.neighborhoods.length;
+  const selectedSchools = new Set(filters.schools);
+  const allSchoolsOn = schoolList.length > 0 && schoolList.every((s) => selectedSchools.has(s.slug));
+  const schoolSelectedCount = filters.schools.length;
   const presetSynced = layersMatchPreset(layers, viewMode, editMode ? { ignore: ["streetsBase"] } : undefined);
   const hideEmptyOn = !layers.streetsBase;
   const illegalOnlyOn = layersMatchFocus(layers, "illegalOnly");
@@ -119,7 +125,7 @@ export function FiltersPanel() {
               <FilterSwitch
                 icon={<Bike size={18} strokeWidth={2.25} />}
                 label="Doar piste de biciclete"
-                hint="Preset: doar stratul de piste (fără bază, parcare, arondare)."
+                hint="Preset: doar pistele (obișnuită + pe carosabil), fără bază / parcare / arondare."
                 checked={bikeOnlyOn}
                 onChange={(v) => (v ? applyFocus("bikeOnly") : clearFocus())}
               />
@@ -163,6 +169,43 @@ export function FiltersPanel() {
             <p className="hint-text">
               Cartierele neselectate își ascund conturul și datele colorate; străzile de bază rămân pe hartă (dacă stratul e activ).
             </p>
+
+            <div className="field-label">Școli</div>
+            <button
+              type="button"
+              className={`select-all-btn ${allSchoolsOn ? "on" : ""}`}
+              onClick={toggleAllSchools}
+              aria-pressed={allSchoolsOn}
+            >
+              <span className="select-all-icon" aria-hidden>
+                {allSchoolsOn ? <CheckCheck size={18} /> : <GraduationCap size={18} />}
+              </span>
+              <span className="select-all-copy">
+                <strong>{allSchoolsOn ? "Toate selectate" : "Selectează tot"}</strong>
+                <small>
+                  {schoolSelectedCount}/{schoolList.length} școli
+                </small>
+              </span>
+              <span className={`switch ${allSchoolsOn ? "on" : ""}`} aria-hidden>
+                <span className="switch-knob" />
+              </span>
+            </button>
+
+            <div className="chip-wrap">
+              {schoolList.map((s) => (
+                <button
+                  key={s.slug}
+                  type="button"
+                  className={`chip ${selectedSchools.has(s.slug) ? "on" : ""}`}
+                  onClick={() => toggleSchool(s.slug)}
+                  aria-pressed={selectedSchools.has(s.slug)}
+                >
+                  {s.name}
+                </button>
+              ))}
+            </div>
+
+            <p className="hint-text">Școlile neselectate își ascund pin-ul și străzile arondate (portocaliu).</p>
           </motion.aside>
         )}
       </AnimatePresence>

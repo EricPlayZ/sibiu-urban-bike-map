@@ -36,10 +36,12 @@ export type SpaceShares = {
 export type ViewMode = "space" | "buildings" | "schools";
 export type BasemapId = "light" | "dark" | "satellite";
 
-/** Culori din harta originală (QGIS / repo EricPlayZ). */
+/** Culori din harta originală (QGIS / repo EricPlayZ) + tipuri de pistă. */
 export const LAYER_COLORS = {
   base: "#666666",
   bike: "#00FF88",
+  /** Pistă între carosabil și mașinile parcate. */
+  bikeDoor: "#00B8D4",
   reserved: "#F50057",
   illegal: "#FFD600",
   schoolAssign: "#ff9100",
@@ -62,6 +64,86 @@ export function featureHasBikeLane(props: Record<string, unknown> | null | undef
 
 export function featureHasReservedParking(props: Record<string, unknown> | null | undefined) {
   return geoFlag(props, "rsrvd_park");
+}
+
+/** Lățime de pistă din măsurători (seed / local / geo). */
+export function measurementHasBikeLane(m?: Measurement | null) {
+  if (!m) return false;
+  return n(m.bike1_m) + n(m.bike2_m) > 0;
+}
+
+/** Pistă: flag geo sau lățime măsurată. */
+export function streetHasBikeLane(props: Record<string, unknown> | null | undefined, m?: Measurement | null) {
+  return featureHasBikeLane(props) || measurementHasBikeLane(m);
+}
+
+export function streetHasIllegalParking(props: Record<string, unknown> | null | undefined, m?: Measurement | null) {
+  return featureHasIllegalParking(props) || hasIllegalParking(m);
+}
+
+/** Pistă fără mașini parcate pe lângă ea. */
+export function featureHasSafeBikeLane(props: Record<string, unknown> | null | undefined) {
+  return featureHasBikeLane(props) && !featureHasIllegalParking(props);
+}
+
+/** Pistă între carosabil și mașinile parcate. */
+export function featureHasDoorZoneBikeLane(props: Record<string, unknown> | null | undefined) {
+  return featureHasBikeLane(props) && featureHasIllegalParking(props);
+}
+
+export function streetHasSafeBikeLane(props: Record<string, unknown> | null | undefined, m?: Measurement | null) {
+  return streetHasBikeLane(props, m) && !streetHasIllegalParking(props, m);
+}
+
+export function streetHasDoorZoneBikeLane(props: Record<string, unknown> | null | undefined, m?: Measurement | null) {
+  return streetHasBikeLane(props, m) && streetHasIllegalParking(props, m);
+}
+
+/**
+ * Ce știm despre pistă pe această stradă.
+ * `none` = avem date/modificări pe stradă, dar fără pistă.
+ * `unknown` = stradă de bază, fără măsurători sau flag-uri.
+ */
+export type BikeLaneStatus = "safe" | "door" | "none" | "unknown";
+
+export function streetBikeLaneStatus(
+  props: Record<string, unknown> | null | undefined,
+  m?: Measurement | null
+): BikeLaneStatus {
+  if (streetHasDoorZoneBikeLane(props, m)) return "door";
+  if (streetHasBikeLane(props, m)) return "safe";
+  if (streetHasSurveyedAttributes(props, m)) return "none";
+  return "unknown";
+}
+
+/** Date sau modificări pe stradă (parcări, măsurători, editări) — nu doar linia de bază. */
+export function streetHasSurveyedAttributes(
+  props: Record<string, unknown> | null | undefined,
+  m?: Measurement | null
+) {
+  if (featureHasIllegalParking(props) || featureHasReservedParking(props)) return true;
+  if (hasIllegalParking(m)) return true;
+  if (m && hasCrossSectionWidths(m)) return true;
+  if (m && (n(m.row_width_m) > 0 || n(m.free_sidewalk1_m) + n(m.free_sidewalk2_m) > 0)) {
+    if (m.source === "seed" || m.source === "local" || hasMeaningfulLocalEdit(m)) return true;
+  }
+  if (hasMeaningfulLocalEdit(m)) return true;
+  return false;
+}
+
+function hasCrossSectionWidths(m: Measurement) {
+  return (
+    n(m.carriageway_m) +
+      n(m.sidewalk1_m) +
+      n(m.sidewalk2_m) +
+      n(m.parking1_m) +
+      n(m.parking2_m) +
+      n(m.bike1_m) +
+      n(m.bike2_m) +
+      n(m.green1_m) +
+      n(m.green2_m) >
+    0
+  );
 }
 
 export const FORM_FIELDS: { key: keyof Measurement; label: string }[] = [
@@ -178,6 +260,75 @@ export function pct(x: number | null | undefined) {
   return `${Math.round(x * 100)}%`;
 }
 
+/** Verdict scurt pe baza spațiului măsurat — pentru utilizatori, nu listă de metri. */
+export function spaceEquityVerdict(shares: SpaceShares): { title: string; detail: string } {
+  const people = Math.round(shares.equity * 100);
+  const cars = Math.round((shares.carriageway + shares.parking) * 100);
+  if (shares.equity >= 0.5) {
+    return {
+      title: `${people}% pentru oameni`,
+      detail: `Pietoni, biciclete și verde au mai mult spațiu decât mașinile (${cars}% carosabil + parcare).`,
+    };
+  }
+  if (shares.equity >= 0.35) {
+    return {
+      title: `${people}% pentru oameni`,
+      detail: `Spațiu mixt: oamenii au o parte vizibilă, dar mașinile rămân dominante (${cars}%).`,
+    };
+  }
+  if (shares.equity >= 0.2) {
+    return {
+      title: `Doar ${people}% pentru oameni`,
+      detail: `Trama e orientată spre mașini (${cars}% carosabil + parcare).`,
+    };
+  }
+  return {
+    title: `Foarte puțin spațiu pentru oameni (${people}%)`,
+    detail: `Aproape toată trama e pentru mașini (${cars}%).`,
+  };
+}
+
+/** Lățime medie trotuar liber — utilă (accesibilitate), nu un dump de câmpuri. */
+export function freeSidewalkHint(m?: Measurement | null): string | null {
+  if (!m) return null;
+  const a = n(m.free_sidewalk1_m);
+  const b = n(m.free_sidewalk2_m);
+  const vals = [a, b].filter((x) => x > 0);
+  if (!vals.length) return null;
+  const avg = vals.reduce((s, x) => s + x, 0) / vals.length;
+  const label = avg.toLocaleString("ro-RO", { maximumFractionDigits: 1, minimumFractionDigits: avg < 10 ? 1 : 0 });
+  if (avg < 1) return `Trotuar liber ~${label} m — foarte îngust pentru pietoni.`;
+  if (avg < 1.5) return `Trotuar liber ~${label} m — strâmt (sub ~1,5 m).`;
+  if (avg < 2) return `Trotuar liber ~${label} m — acceptabil, dar fără confort.`;
+  return `Trotuar liber ~${label} m — spațiu pietonal confortabil.`;
+}
+
+/** Citire calitativă din flag-uri când nu există măsurători de lățime. */
+export function flagSpaceStory(props: Record<string, unknown>): string | null {
+  const bike = featureHasBikeLane(props);
+  const doorBike = featureHasDoorZoneBikeLane(props);
+  const illegal = featureHasIllegalParking(props);
+  const reserved = featureHasReservedParking(props);
+  if (!bike && !illegal && !reserved) return null;
+  if (doorBike && reserved) {
+    return "Pistă pe carosabil (între carosabil și parcări); trotuarul e afectat și de parcare amenajată.";
+  }
+  if (doorBike) {
+    return "Pistă pe carosabil — între carosabil și mașinile parcate, fără protecție.";
+  }
+  if (bike && reserved) {
+    return "Are pistă; o parte din trotuar e totuși rezervată parcării de mașini.";
+  }
+  if (illegal && reserved) {
+    return "Trotuarele sunt afectate: și parcare amenajată, și ocupare ilegală.";
+  }
+  if (illegal) return "Parcare ilegală pe trotuar — spațiul pietonal e compromis.";
+  if (reserved) return "Parcare amenajată pe trotuar — spațiul pietonal e redus formal.";
+  if (bike) return "Există spațiu dedicat bicicletelor pe acest segment.";
+  return null;
+}
+
+
 export function slugify(text: string) {
   let n = String(text || "")
     .trim()
@@ -224,3 +375,49 @@ export function makeBuildingId(feature: GeoJSON.Feature, index: number) {
 export function lookupKey(cartier: string, name: string) {
   return `${slugify(cartier)}::${normalizeStreetName(name)}`;
 }
+
+/** Date din streets.geojson → Measurement (doar câmpurile disponibile). */
+export function measurementFromGeoProps(props: Record<string, unknown> | null | undefined): Measurement {
+  if (!props) return {};
+  const length = Number(props.length_m ?? props.length);
+  const out: Measurement = {
+    name: String(props.name || "") || undefined,
+    neighborhood_slug: props.cartier != null && String(props.cartier).trim() ? String(props.cartier) : undefined,
+  };
+  if (Number.isFinite(length) && length > 0) out.length_m = length;
+  if (featureHasIllegalParking(props)) out.illgl_park = true;
+
+  // Dacă geojson-ul are vreodată lățimi, le preluăm
+  for (const f of FORM_FIELDS) {
+    if (f.key === "length_m") continue;
+    const v = Number(props[f.key]);
+    if (Number.isFinite(v) && v > 0) (out as Record<string, unknown>)[f.key] = v;
+  }
+  return out;
+}
+
+/**
+ * Măsurătoare afișată / editabilă: geojson → seed catalog → override local.
+ * Seed-ul NU e „editare locală”; local câștigă mereu.
+ */
+export function resolveStreetMeasurement(
+  sid: string,
+  props: Record<string, unknown> | null | undefined,
+  local: Record<string, Measurement>,
+  seedByLookup: Record<string, Measurement>
+): Measurement {
+  const base = measurementFromGeoProps(props);
+  const cartier = String(props?.cartier || base.neighborhood_slug || "");
+  const name = String(props?.name || base.name || "");
+  const seed = seedByLookup[lookupKey(cartier, name)];
+  const loc = local[sid];
+  return {
+    ...base,
+    ...(seed || {}),
+    ...(loc || {}),
+    name: loc?.name || seed?.name || base.name || name || undefined,
+    street_id: sid,
+    source: loc?.source || seed?.source || base.source,
+  };
+}
+

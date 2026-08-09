@@ -64,9 +64,23 @@ export function exportAll() {
 }
 
 export function mergeSeed(_seed: Record<string, Measurement>, _idByLookup: Map<string, string>) {
-  // Deprecated: nu mai importăm Excel. Păstrat gol pentru compat.
+  // Deprecated: nu mai importăm Excel în localStorage. Păstrat gol pentru compat.
   return 0;
 }
+
+/** Catalog de măsurători din measurements-seed.json (cheie cartier::strada). */
+export function normalizeSeedCatalog(raw: unknown): Record<string, Measurement> {
+  if (!raw || typeof raw !== "object") return {};
+  const root = raw as Record<string, unknown>;
+  const streets = (root.streets && typeof root.streets === "object" ? root.streets : raw) as Record<string, Measurement>;
+  const out: Record<string, Measurement> = {};
+  for (const [key, m] of Object.entries(streets)) {
+    if (!m || typeof m !== "object") continue;
+    out[key] = { ...m, source: m.source || "seed" };
+  }
+  return out;
+}
+
 
 /** Șterge din localStorage măsurătorile venite din Excel seed. */
 export function purgeExcelSeedMeasurements() {

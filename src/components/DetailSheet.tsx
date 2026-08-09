@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useLayoutEffect, useMemo, useState, type CSSPrope
 import { AnimatePresence, motion } from "framer-motion";
 import { Home, Building2, Package, HelpCircle, Pencil, X, Ruler, Road, Car, Footprints, ParkingSquare, Bike, Trees, TriangleAlert, Save, Trash2 } from "lucide-react";
 import { useApp } from "../store";
-import { FORM_FIELDS, pct, spaceShares, featureHasBikeLane, featureHasIllegalParking, featureHasReservedParking, type Measurement } from "../lib/space";
+import { FORM_FIELDS, pct, spaceShares, featureHasIllegalParking, featureHasReservedParking, resolveStreetMeasurement, streetBikeLaneStatus, streetHasBikeLane, type Measurement } from "../lib/space";
 
 const FIELD_ICONS: Partial<Record<keyof Measurement, typeof Ruler>> = {
     length_m: Ruler,
@@ -31,11 +31,16 @@ export function DetailSheet() {
     const selected = useApp((s) => s.selected);
     const editMode = useApp((s) => s.editMode);
     const measurements = useApp((s) => s.measurements);
+    const seedMeasurements = useApp((s) => s.seedMeasurements);
     const closeSheet = useApp((s) => s.closeSheet);
     const saveStreet = useApp((s) => s.saveStreet);
     const setBuildingType = useApp((s) => s.setBuildingType);
 
-    const existing = selected?.kind === "street" ? measurements[selected.id] : undefined;
+    const existing = useMemo(() => {
+        if (selected?.kind !== "street") return undefined;
+        return resolveStreetMeasurement(selected.id, selected.props, measurements, seedMeasurements);
+    }, [selected, measurements, seedMeasurements]);
+    const hasLocalEdit = selected?.kind === "street" ? Boolean(measurements[selected.id]) : false;
     const desktop = typeof window !== "undefined" && window.matchMedia("(min-width: 861px)").matches;
 
     // Scrimul se demontează imediat; panoul rămâne pe exit — fără hit-testing în timpul animației.
@@ -71,7 +76,28 @@ export function DetailSheet() {
                         aria-modal="true"
                     >
                         <div className="sheet-handle" />
-                        {selected.kind === "street" ? editMode ? <StreetEditor id={selected.id} name={selected.name} initial={existing} onSave={(data) => saveStreet(selected.id, data)} onClose={closeSheet} /> : <StreetPublic name={selected.name} m={existing} props={selected.props} onClose={closeSheet} onEditHint={() => useApp.getState().setEditMode(true)} /> : <BuildingEditor id={selected.id} type={selected.type} onPick={setBuildingType} onClose={closeSheet} editMode={editMode} />}
+                        {selected.kind === "street" ? (
+                            editMode ? (
+                                <StreetEditor
+                                    id={selected.id}
+                                    name={selected.name}
+                                    initial={existing}
+                                    hasLocalEdit={hasLocalEdit}
+                                    onSave={(data) => saveStreet(selected.id, data)}
+                                    onClose={closeSheet}
+                                />
+                            ) : (
+                                <StreetPublic
+                                    name={selected.name}
+                                    m={existing}
+                                    props={selected.props}
+                                    onClose={closeSheet}
+                                    onEditHint={() => useApp.getState().setEditMode(true)}
+                                />
+                            )
+                        ) : (
+                            <BuildingEditor id={selected.id} type={selected.type} onPick={setBuildingType} onClose={closeSheet} editMode={editMode} />
+                        )}
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -82,7 +108,8 @@ export function DetailSheet() {
 function StreetPublic({ name, m, props, onClose, onEditHint }: { name: string; m?: Measurement; props: Record<string, unknown>; onClose: () => void; onEditHint: () => void }) {
     const schools = useApp((s) => s.schools);
     const shares = spaceShares(m);
-    const bike = featureHasBikeLane(props);
+    const bikeStatus = streetBikeLaneStatus(props, m);
+    const bike = streetHasBikeLane(props, m);
     const illegal = featureHasIllegalParking(props);
     const reserved = featureHasReservedParking(props);
     const arondat = String(props.arondat || "").trim();
@@ -97,13 +124,17 @@ function StreetPublic({ name, m, props, onClose, onEditHint }: { name: string; m
             </div>
 
             <ul className="flag-list">
-                <li className={bike ? "yes" : "no"}>
-                    {bike ? "✔" : "✖"} Pistă de biciclete: {bike ? "Da" : "Nu"}
-                </li>
+                {bikeStatus === "door" && (
+                    <li className="yes">✔ Pistă pe carosabil: între carosabil și mașinile parcate</li>
+                )}
+                {bikeStatus === "safe" && <li className="yes">✔ Pistă de biciclete: Da</li>}
+                {bikeStatus === "none" && <li className="no">✖ Pistă de biciclete: Nu</li>}
                 {illegal && <li className="warn">⚠ Parcare ilegală pe trotuar: Da</li>}
                 {reserved && <li className="info">🅿️ Parcare amenajată pe trotuar: Da</li>}
                 {arondat && <li className="info">🏫 Arondată la: {schoolName(arondat, schools)}</li>}
-                {!bike && !illegal && !reserved && !arondat && !m && <li className="muted">Nu există date specifice pentru această stradă.</li>}
+                {!bike && !illegal && !reserved && !arondat && bikeStatus === "unknown" && !shares && (
+                    <li className="muted">Nu există date specifice pentru această stradă.</li>
+                )}
             </ul>
 
             {shares && (
@@ -114,17 +145,29 @@ function StreetPublic({ name, m, props, onClose, onEditHint }: { name: string; m
                     </p>
                 </>
             )}
-            {!shares && m && <p className="sub">Editată local, dar fără lățimi complete încă.</p>}
-            {!m && (
-                <button type="button" className="btn primary wide" onClick={onEditHint}>
-                    Pornește editarea
-                </button>
-            )}
+            {!shares && m && <p className="sub">Există date parțiale, dar fără lățimi complete pentru bara de spațiu.</p>}
+            <button type="button" className="btn primary wide" onClick={onEditHint}>
+                {shares || bike || illegal || reserved || arondat ? "Editează măsurătorile" : "Pornește editarea"}
+            </button>
         </div>
     );
 }
 
-function StreetEditor({ id, name, initial, onSave, onClose }: { id: string; name: string; initial?: Measurement; onSave: (d: Measurement) => void; onClose: () => void }) {
+function StreetEditor({
+    id,
+    name,
+    initial,
+    hasLocalEdit,
+    onSave,
+    onClose,
+}: {
+    id: string;
+    name: string;
+    initial?: Measurement;
+    hasLocalEdit: boolean;
+    onSave: (d: Measurement) => void;
+    onClose: () => void;
+}) {
     const [draft, setDraft] = useState<Measurement>(() => ({ name, ...initial }));
     useEffect(() => {
         setDraft({ name, ...initial });
@@ -134,6 +177,8 @@ function StreetEditor({ id, name, initial, onSave, onClose }: { id: string; name
         e.preventDefault();
         onSave(draft);
     };
+
+    const fromSeed = initial?.source === "seed" && !hasLocalEdit;
 
     return (
         <div className="sheet-body editor-sheet">
@@ -148,7 +193,11 @@ function StreetEditor({ id, name, initial, onSave, onClose }: { id: string; name
                     <X size={18} strokeWidth={2.25} />
                 </button>
             </div>
-            <p className="sub">Completează lățimile — pe hartă apare imediat ca măsurătoare locală.</p>
+            <p className="sub">
+                {fromSeed
+                    ? "Valorile de mai jos vin din măsurătorile existente pe stradă — le poți ajusta și salva local."
+                    : "Completează lățimile — pe hartă apare imediat ca măsurătoare locală."}
+            </p>
             <SpaceBar m={draft} />
             <form className="form" onSubmit={onSubmit}>
                 <label className="field field-named">
@@ -204,7 +253,7 @@ function StreetEditor({ id, name, initial, onSave, onClose }: { id: string; name
                         Închide
                     </button>
                 </div>
-                {initial && (
+                {hasLocalEdit && (
                     <button
                         type="button"
                         className="btn danger-ghost wide"
