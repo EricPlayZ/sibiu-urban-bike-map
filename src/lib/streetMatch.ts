@@ -13,7 +13,13 @@ export type MatchIssueCode =
   | "osm_no_csv_in_neighborhood"
   | "osm_clipped_neighborhood"
   | "csv_parse_columns"
-  | "geometry_source";
+  | "geometry_source"
+  | "arondare_csv_missing"
+  | "arondare_no_osm"
+  | "arondare_osm_no_school"
+  | "arondare_school_unmatched"
+  | "arondare_multi_school"
+  | "arondare_ambiguous_osm";
 
 export type ImportIssue = {
   code: MatchIssueCode;
@@ -49,8 +55,8 @@ export function stripSegmentSuffix(name: string): { base: string; index: number 
 }
 
 /** Cheie de potrivire: fără „Strada”, fără diacritice, lowercase slug. */
-export function nameKey(name: string) {
-  return normalizeStreetName(name);
+export function nameKey(name: string, opts?: { keepDistinctivePrefix?: boolean }) {
+  return normalizeStreetName(name, opts);
 }
 
 function levenshtein(a: string, b: string) {
@@ -102,14 +108,19 @@ export type MatchResult = {
 /**
  * Potrivește un nume CSV (deja fără sufix 1/2 dacă a fost mediat) la toate
  * segmentele OSM cu același nume normalizat din cartier.
+ * `fuzzy` (implicit true) e pentru măsurători; arondarea școlilor trece `false`
+ * ca să nu atribuie școala pe Levenshtein 1–2 (Murelor→Morilor).
  */
 export function matchCsvNameToOsm(
   csvName: string,
-  neighborhoodSlug: string,
-  byKey: Map<string, OsmStreet[]>
+  neighborhoodSlug: string | undefined,
+  byKey: Map<string, OsmStreet[]>,
+  opts?: { fuzzy?: boolean; keepDistinctivePrefix?: boolean }
 ): MatchResult {
   const issues: ImportIssue[] = [];
-  const key = nameKey(csvName);
+  const key = nameKey(csvName, opts);
+  const loc = neighborhoodSlug ? ` în „${neighborhoodSlug}”` : "";
+  const allowFuzzy = opts?.fuzzy ?? true;
 
   const exact = byKey.get(key);
   if (exact?.length) {
@@ -127,18 +138,20 @@ export function matchCsvNameToOsm(
     return { targets: exact, method: "exact", issues };
   }
 
-  const fuzzy = fuzzyGroup(key, byKey);
-  if (fuzzy?.length) {
-    issues.push({
-      code: "csv_ambiguous_osm",
-      severity: "warn",
-      neighborhood_slug: neighborhoodSlug,
-      csv_name: csvName,
-      osm_name: fuzzy[0].name,
-      detail: `Potrivire fuzzy (fără diacritice): CSV „${csvName}” ≈ OSM „${fuzzy[0].name}” (${fuzzy.length} seg.).`,
-      hint: "Aliniază denumirea din CSV la OSM ca să eviți false positives.",
-    });
-    return { targets: fuzzy, method: "fuzzy", issues };
+  if (allowFuzzy) {
+    const fuzzy = fuzzyGroup(key, byKey);
+    if (fuzzy?.length) {
+      issues.push({
+        code: "csv_ambiguous_osm",
+        severity: "warn",
+        neighborhood_slug: neighborhoodSlug,
+        csv_name: csvName,
+        osm_name: fuzzy[0].name,
+        detail: `Potrivire fuzzy (fără diacritice): CSV „${csvName}” ≈ OSM „${fuzzy[0].name}” (${fuzzy.length} seg.).`,
+        hint: "Aliniază denumirea din CSV la OSM ca să eviți false positives.",
+      });
+      return { targets: fuzzy, method: "fuzzy", issues };
+    }
   }
 
   issues.push({
@@ -146,8 +159,8 @@ export function matchCsvNameToOsm(
     severity: "error",
     neighborhood_slug: neighborhoodSlug,
     csv_name: csvName,
-    detail: `Nicio potrivire OSM în „${neighborhoodSlug}” pentru CSV „${csvName}” (key=${key}).`,
-    hint: `Candidați în cartier: ${nearestKeys(key, byKey, 5).join(", ") || "(niciunul)"}. Dacă strada există în OSM dar lipsește aici, e posibil să nu fi fost asignată cartierului (contur poligon).`,
+    detail: `Nicio potrivire OSM${loc} pentru CSV „${csvName}” (key=${key}).`,
+    hint: `Candidați${neighborhoodSlug ? " în cartier" : ""}: ${nearestKeys(key, byKey, 5).join(", ") || "(niciunul)"}. Dacă strada există în OSM dar lipsește aici, e posibil să nu fi fost asignată cartierului (contur poligon).`,
   });
   return { targets: [], method: "exact", issues };
 }

@@ -18,6 +18,12 @@ const CODE_LABEL: Record<MatchIssueCode, string> = {
   osm_clipped_neighborhood: "Tăiat pe cartiere",
   csv_parse_columns: "Coloane CSV",
   geometry_source: "Sursă geometrie",
+  arondare_csv_missing: "CSV arondare",
+  arondare_no_osm: "Arondare fără OSM",
+  arondare_osm_no_school: "OSM fără școală",
+  arondare_school_unmatched: "Școală fără geojson",
+  arondare_multi_school: "Multi-școală",
+  arondare_ambiguous_osm: "Arondare ambiguă",
 };
 
 function streetOf(i: ImportIssue) {
@@ -132,7 +138,7 @@ export function ImportReportPanel() {
               <h2>
                 <Bug size={18} strokeWidth={2.2} /> Import CSV / OSM
               </h2>
-              <p className="sub">Potriviri CSV ↔ OSM, pe cartier și stradă.</p>
+              <p className="sub">Potriviri CSV ↔ OSM și arondare școli, pe cartier și stradă.</p>
             </div>
             <button type="button" className="icon-x" onClick={close} aria-label="Închide">
               <X size={18} />
@@ -162,6 +168,35 @@ export function ImportReportPanel() {
           {report.csvFilesLoaded.length > 0 && (
             <p className="import-csv-files">{report.csvFilesLoaded.join(" · ")}</p>
           )}
+
+          <div className="import-kpis">
+            <div className="import-kpi">
+              <span>Arondare CSV</span>
+              <b>{report.catchment?.csvRows ?? 0}</b>
+            </div>
+            <div className="import-kpi">
+              <span>OSM arondate</span>
+              <b>
+                {report.catchment?.osmMatched ?? 0}
+                <small> / {report.streetCount}</small>
+              </b>
+            </div>
+            <div className="import-kpi">
+              <span>Fără arondare</span>
+              <b>
+                {report.catchment?.csvUnmatched ?? 0}
+                <small>
+                  {" "}
+                  CSV · {report.catchment?.osmWithoutSchool ?? 0} OSM
+                </small>
+              </b>
+            </div>
+          </div>
+          <p className="import-csv-files">
+            Arondare: {report.catchment?.osmMatched ?? 0} segmente OSM cu școală · {report.catchment?.csvUnmatched ?? 0}{" "}
+            străzi CSV fără OSM · {report.catchment?.multiSchool ?? 0} multi-școală (păstrăm prima din CSV) ·{" "}
+            {report.catchment?.schoolUnmatched ?? 0} școli fără punct geojson.
+          </p>
 
           <div className="import-sev-toggles" role="group" aria-label="Filtru severitate">
             <button type="button" className={`import-sev-btn sev-error ${sev === "error" ? "on" : ""}`} onClick={() => toggleSev("error")}>

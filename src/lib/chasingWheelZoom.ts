@@ -58,11 +58,14 @@ export function enableChasingWheelZoom(map: Map) {
         running = true;
     };
 
-    const canvas = map.getCanvas();
-    canvas.addEventListener("wheel", onWheel, { passive: false });
+    // Pe canvas-container, nu pe <canvas>: markerele HTML (școli) sunt sibling-uri
+    // ale canvas-ului, deci wheel-ul pe pin nu ajungea pe canvas. scrollZoom-ul
+    // nativ MapLibre ascultă tot aici. Click/tap pe markere rămâne neschimbat.
+    const canvasContainer = map.getCanvasContainer();
+    canvasContainer.addEventListener("wheel", onWheel, { passive: false });
 
     return () => {
-        canvas.removeEventListener("wheel", onWheel);
+        canvasContainer.removeEventListener("wheel", onWheel);
         map.off("zoomend", syncFromMap);
         map.off("moveend", syncFromMap);
         if (raf) cancelAnimationFrame(raf);

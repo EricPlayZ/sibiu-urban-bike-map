@@ -340,10 +340,15 @@ export function slugify(text: string) {
   return n.replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 }
 
-export function normalizeStreetName(name: string) {
+export function normalizeStreetName(name: string, opts?: { keepDistinctivePrefix?: boolean }) {
   let s = String(name || "").trim();
-  // Scoatem prefixe comune (CSV și OSM) înainte de slugify (fără diacritice).
-  s = s.replace(/^(strada|stradă|str\.?|bulevardul|bd\.?|calea|aleea|piața|piata)\s+/i, "");
+  // Strada / Bd / Calea / Șoseaua sunt generice — CSV „Strada X” = OSM „X”.
+  // Aleea / Piața / Intrarea / Fundătura / Pasajul: păstrate doar la arondare (keepDistinctivePrefix),
+  // ca „Aleea X” să nu coincidă cu „Strada X”. Măsurătorile păstrează strip-ul vechi (sid / seed).
+  const prefix = opts?.keepDistinctivePrefix
+    ? /^(strada|stradă|str\.?|bulevardul|bd\.?|șoseaua|soseaua|sos\.?|calea)\s+/i
+    : /^(strada|stradă|str\.?|bulevardul|bd\.?|șoseaua|soseaua|sos\.?|calea|aleea|piața|piata)\s+/i;
+  s = s.replace(prefix, "");
   return slugify(s);
 }
 
@@ -379,6 +384,52 @@ export function makeBuildingId(feature: GeoJSON.Feature, index: number) {
 
 export function lookupKey(cartier: string, name: string) {
   return `${slugify(cartier)}::${normalizeStreetName(name)}`;
+}
+
+const EARTH_R_M = 6_371_000;
+
+/** Distanță echirectangulară (m) — suficient de precisă la scară de oraș. */
+export function lngLatDistanceMeters(a: number[], b: number[]): number {
+  if (a.length < 2 || b.length < 2) return 0;
+  const toRad = Math.PI / 180;
+  const lat1 = a[1] * toRad;
+  const lat2 = b[1] * toRad;
+  const x = (b[0] - a[0]) * toRad * Math.cos((lat1 + lat2) / 2);
+  const y = (b[1] - a[1]) * toRad;
+  return Math.hypot(x, y) * EARTH_R_M;
+}
+
+export function lineCoordsLengthMeters(coords: number[][]): number {
+  let s = 0;
+  for (let i = 1; i < coords.length; i++) s += lngLatDistanceMeters(coords[i - 1], coords[i]);
+  return s;
+}
+
+/** Lungime geometrie LineString / MultiLineString în metri. */
+export function geometryLengthMeters(geom: GeoJSON.Geometry | null | undefined): number {
+  if (!geom) return 0;
+  if (geom.type === "LineString") return lineCoordsLengthMeters(geom.coordinates);
+  if (geom.type === "MultiLineString") {
+    return geom.coordinates.reduce((s, line) => s + lineCoordsLengthMeters(line), 0);
+  }
+  return 0;
+}
+
+function propertyLengthMeters(props: Record<string, unknown> | null | undefined): number {
+  if (!props) return 0;
+  const n = Number(props.length_m ?? props.length);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Lungimea acestui feature (bucată clipată, nu strada OSM întreagă).
+ * Folosește `length` / `length_m` doar dacă sunt pe acest feature; altfel calculează din coordonate.
+ * Nu folosește măsurători seed/CSV — acelea ar putea fi lungimea străzii complete.
+ */
+export function featureLengthMeters(feature: GeoJSON.Feature): number {
+  const fromProps = propertyLengthMeters((feature.properties || null) as Record<string, unknown> | null);
+  if (fromProps > 0) return fromProps;
+  return geometryLengthMeters(feature.geometry);
 }
 
 /** Date din streets.geojson → Measurement (doar câmpurile disponibile). */

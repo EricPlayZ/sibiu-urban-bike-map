@@ -76,7 +76,6 @@ type AppState = {
   buildingTypes: Record<string, { type: string }>;
   buildings: GeoJSON.FeatureCollection | null;
   schools: GeoJSON.FeatureCollection | null;
-  buildingCounts: { total: number; by_neighborhood: Record<string, number> };
   neighborhoodList: { slug: string; name: string }[];
   schoolList: { slug: string; name: string }[];
   toast: string | null;
@@ -153,7 +152,6 @@ export const useApp = create<AppState>((set, get) => ({
   buildingTypes: {},
   buildings: null,
   schools: null,
-  buildingCounts: { total: 0, by_neighborhood: {} },
   neighborhoodList: [],
   schoolList: [],
   toast: null,
@@ -166,14 +164,8 @@ export const useApp = create<AppState>((set, get) => ({
   init: async () => {
     applyDocumentTheme(get().uiTheme);
     set({ loadingMsg: "Importăm geometrie + CSV…" });
-    const [limits, counts, schools] = await Promise.all([
+    const [limits, schools] = await Promise.all([
       fetch("./neighborhood_limits.geojson").then((r) => r.json()) as Promise<GeoJSON.FeatureCollection>,
-      fetch("./data/buildings-counts.json")
-        .then((r) => r.json())
-        .catch(() => ({ total: 0, by_neighborhood: {} })) as Promise<{
-        total: number;
-        by_neighborhood: Record<string, number>;
-      }>,
       fetch("./schools.geojson")
         .then((r) => r.json())
         .catch(() => ({ type: "FeatureCollection", features: [] })) as Promise<GeoJSON.FeatureCollection>,
@@ -220,7 +212,6 @@ export const useApp = create<AppState>((set, get) => ({
       importReportOpen: true,
       statsOpen: true,
       buildingTypes: loadBuildingTypes(),
-      buildingCounts: counts,
       schools,
       neighborhoodList,
       schoolList,

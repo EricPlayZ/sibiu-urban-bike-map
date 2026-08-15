@@ -19,6 +19,7 @@ import {
   type NeighborhoodPoly,
 } from "./geoAssign";
 import { MEASUREMENT_CSV_SLUGS } from "./measurementsSlugs.generated";
+import { applySchoolCatchments, type CatchmentStats } from "./schoolCatchment";
 import { makeStreetId, normalizeStreetName, type Measurement } from "./space";
 import {
   groupByNameKey,
@@ -28,6 +29,15 @@ import {
   type OsmStreet,
 } from "./streetMatch";
 
+const EMPTY_CATCHMENT: CatchmentStats = {
+  csvRows: 0,
+  osmMatched: 0,
+  csvUnmatched: 0,
+  osmWithoutSchool: 0,
+  schoolUnmatched: 0,
+  multiSchool: 0,
+};
+
 export type ImportReport = {
   geometrySource: "osm-streets.geojson" | "none";
   streetCount: number;
@@ -35,6 +45,7 @@ export type ImportReport = {
   unassignedCount: number;
   csvFilesLoaded: string[];
   matchedCsvRows: number;
+  catchment: CatchmentStats;
   issues: ImportIssue[];
   generatedAt: string;
 };
@@ -64,18 +75,22 @@ async function tryFetchJson(url: string): Promise<GeoJSON.FeatureCollection | nu
   }
 }
 
-async function tryFetchCsv(url: string): Promise<string | null> {
+async function tryFetchText(url: string): Promise<string | null> {
   try {
     const r = await fetch(assetUrl(url));
     if (!r.ok) return null;
     const ct = r.headers.get("content-type") || "";
     if (ct.includes("text/html")) return null;
-    const text = await r.text();
-    if (!looksLikeMeasurementCsv(text)) return null;
-    return text;
+    return await r.text();
   } catch {
     return null;
   }
+}
+
+async function tryFetchCsv(url: string): Promise<string | null> {
+  const text = await tryFetchText(url);
+  if (text == null || !looksLikeMeasurementCsv(text)) return null;
+  return text;
 }
 
 /** Slug-uri CSV: din modulul generat la build + verificare că fișierul e chiar CSV. */
@@ -144,6 +159,7 @@ function emptyReport(issues: ImportIssue[], geometrySource: ImportReport["geomet
       unassignedCount: 0,
       csvFilesLoaded: [],
       matchedCsvRows: 0,
+      catchment: { ...EMPTY_CATCHMENT },
       issues,
       generatedAt: new Date().toISOString(),
     },
@@ -234,6 +250,7 @@ export async function runImportPipeline(limits: GeoJSON.FeatureCollection): Prom
   for (const f of raw.features) {
     const baseProps: Record<string, unknown> = { ...(f.properties || {}) };
     clearLegacyFlags(baseProps);
+    delete baseProps.arondat;
     const nameKey = normalizeStreetName(String(baseProps.name || ""));
     const pieces = clipStreetToNeighborhoods(f.geometry, polys);
     if (pieces.length) {
@@ -439,6 +456,16 @@ export async function runImportPipeline(limits: GeoJSON.FeatureCollection): Prom
     }
   }
 
+  const schoolFc = await tryFetchJson("schools.geojson");
+  const schoolSlugs = new Set(
+    (schoolFc?.features || [])
+      .map((f) => String((f.properties as { slug?: string } | null)?.slug || "").trim())
+      .filter(Boolean)
+  );
+  const catchmentText = await tryFetchText("data/school-catchments.csv");
+  const catchment = applySchoolCatchments(features, catchmentText, schoolSlugs);
+  issues.push(...catchment.issues);
+
   return {
     streets: { type: "FeatureCollection", features },
     csvMeasurements,
@@ -449,6 +476,7 @@ export async function runImportPipeline(limits: GeoJSON.FeatureCollection): Prom
       unassignedCount,
       csvFilesLoaded,
       matchedCsvRows,
+      catchment: catchment.stats,
       issues,
       generatedAt: new Date().toISOString(),
     },

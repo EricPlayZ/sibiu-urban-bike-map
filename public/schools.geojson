@@ -19,6 +19,11 @@
 { "type": "Feature", "properties": { "id": 13, "denumire": "Școala Gimnazială nr. 13", "slug": "scoala_13" }, "geometry": { "type": "Point", "coordinates": [ 24.145545358274813, 45.806647140817518 ] } },
 { "type": "Feature", "properties": { "id": 14, "denumire": "Colegiul Național Pedagogic \"Andrei Șaguna\"", "slug": "liceu_andrei_saguna" }, "geometry": { "type": "Point", "coordinates": [ 24.154088736576877, 45.782081981472658 ] } },
 { "type": "Feature", "properties": { "id": 15, "denumire": "Școala Gimnazială nr. 18", "slug": "scoala_18" }, "geometry": { "type": "Point", "coordinates": [ 24.145435883300767, 45.808291331499397 ] } },
-{ "type": "Feature", "properties": { "id": 16, "denumire": "Școala Gimnazială \"Ioan Slavici\"", "slug": "scoala_ioan_slavici" }, "geometry": { "type": "Point", "coordinates": [ 24.170259298509105, 45.801162009417126 ] } }
+{ "type": "Feature", "properties": { "id": 16, "denumire": "Școala Gimnazială \"Ioan Slavici\"", "slug": "scoala_ioan_slavici" }, "geometry": { "type": "Point", "coordinates": [ 24.170259298509105, 45.801162009417126 ] } },
+{ "type": "Feature", "properties": { "id": 17, "denumire": "Liceu Tehnologic de Construcții și Arhitectură \"Carol I\"", "slug": "liceu_carol_1" }, "geometry": { "type": "Point", "coordinates": [ 24.138579237651115, 45.79851075063744 ] } },
+{ "type": "Feature", "properties": { "id": 18, "denumire": "Școala Gimnazială nr. 23", "slug": "scoala_23" }, "geometry": { "type": "Point", "coordinates": [ 24.135647476380811, 45.813721937431779 ] } },
+{ "type": "Feature", "properties": { "id": 19, "denumire": "Școala Gimnazială nr. 25", "slug": "scoala_25" }, "geometry": { "type": "Point", "coordinates": [ 24.127714152419323, 45.768864186599757 ] } },
+{ "type": "Feature", "properties": { "id": 20, "denumire": "Școala Gimnazială \"Regele Ferdinand\"", "slug": "scoala_regele_ferdinand" }, "geometry": { "type": "Point", "coordinates": [ 24.17275774241207, 45.78640755709533 ] } },
+{ "type": "Feature", "properties": { "id": 21, "denumire": "Colegiul Național \"Octavian Goga\"", "slug": "liceu_octavian_goga" }, "geometry": { "type": "Point", "coordinates": [ 24.145951120313175, 45.793518042097681 ] } }
 ]
 }

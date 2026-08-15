@@ -63,25 +63,6 @@ export function exportAll() {
   };
 }
 
-export function mergeSeed(_seed: Record<string, Measurement>, _idByLookup: Map<string, string>) {
-  // Deprecated: nu mai importăm Excel în localStorage. Păstrat gol pentru compat.
-  return 0;
-}
-
-/** Catalog de măsurători din measurements-seed.json (cheie cartier::strada). */
-export function normalizeSeedCatalog(raw: unknown): Record<string, Measurement> {
-  if (!raw || typeof raw !== "object") return {};
-  const root = raw as Record<string, unknown>;
-  const streets = (root.streets && typeof root.streets === "object" ? root.streets : raw) as Record<string, Measurement>;
-  const out: Record<string, Measurement> = {};
-  for (const [key, m] of Object.entries(streets)) {
-    if (!m || typeof m !== "object") continue;
-    out[key] = { ...m, source: m.source || "seed" };
-  }
-  return out;
-}
-
-
 /** Șterge din localStorage măsurătorile venite din Excel seed. */
 export function purgeExcelSeedMeasurements() {
   const all = loadMeasurements();
@@ -131,5 +112,5 @@ export function purgeEmptyOrFlagOnlyMeasurements() {
 
 export function migrateV1(_streets: GeoJSON.FeatureCollection) {
   // Dezactivat: importa resturi vechi care apăreau ca „editate local”.
-  // Datele oficiale sunt în streets.geojson; măsurătorile noi au source: "local".
+  // Datele oficiale vin din OSM + CSV; măsurătorile noi au source: "local".
 }

@@ -2,19 +2,15 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { useApp } from "../store";
 import {
-  featureHasIllegalParking,
   featureHasReservedParking,
+  featureLengthMeters,
   hasAnyEdit,
   LAYER_COLORS,
   resolveStreetMeasurement,
   streetHasDoorZoneBikeLane,
+  streetHasIllegalParking,
   streetHasSafeBikeLane,
 } from "../lib/space";
-
-function streetLengthM(props: Record<string, unknown>) {
-  const n = Number(props.length ?? props.length_m);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-}
 
 function formatKm(meters: number) {
   const km = meters / 1000;
@@ -50,7 +46,7 @@ export function StatsPanel() {
 
   const safeBikeFeats = resolved.filter(({ props, m }) => streetHasSafeBikeLane(props, m));
   const doorBikeFeats = resolved.filter(({ props, m }) => streetHasDoorZoneBikeLane(props, m));
-  const illegalFeats = resolved.filter(({ props }) => featureHasIllegalParking(props));
+  const illegalFeats = resolved.filter(({ props, m }) => streetHasIllegalParking(props, m));
   const reservedFeats = resolved.filter(({ props }) => featureHasReservedParking(props));
   const assigned = feats.filter((f) => {
     const slug = String((f.properties as { arondat?: string })?.arondat || "").trim();
@@ -66,11 +62,11 @@ export function StatsPanel() {
   const doorBike = doorBikeFeats.length;
   const illegal = illegalFeats.length;
   const reserved = reservedFeats.length;
-  const safeBikeM = safeBikeFeats.reduce((s, { props }) => s + streetLengthM(props), 0);
-  const doorBikeM = doorBikeFeats.reduce((s, { props }) => s + streetLengthM(props), 0);
+  const safeBikeM = safeBikeFeats.reduce((s, { f }) => s + featureLengthMeters(f), 0);
+  const doorBikeM = doorBikeFeats.reduce((s, { f }) => s + featureLengthMeters(f), 0);
   const bikeM = safeBikeM + doorBikeM;
-  const illegalM = illegalFeats.reduce((s, { props }) => s + streetLengthM(props), 0);
-  const reservedM = reservedFeats.reduce((s, { props }) => s + streetLengthM(props), 0);
+  const illegalM = illegalFeats.reduce((s, { f }) => s + featureLengthMeters(f), 0);
+  const reservedM = reservedFeats.reduce((s, { f }) => s + featureLengthMeters(f), 0);
 
   const legend: { color: string; label: string }[] = [];
   if (layers.buildings) {
