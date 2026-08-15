@@ -1552,6 +1552,7 @@ html[data-theme="dark"] .bldg-chip {
   .stats-panel,
   .filters-panel,
   .edits-panel,
+  .import-report-panel,
   .basemap-pop,
   .theme-pop {
     top: auto;
@@ -1565,6 +1566,9 @@ html[data-theme="dark"] .bldg-chip {
   .stats-panel,
   .edits-panel {
     max-height: 42vh;
+  }
+  .import-report-panel {
+    max-height: 52vh;
   }
   .filters-panel {
     max-height: 48vh;
@@ -1645,4 +1649,289 @@ html[data-theme="dark"] .bldg-chip {
   .mobile-dock {
     display: none !important;
   }
+}
+
+/* —— Import report (CSV / OSM) —— */
+.import-report-panel {
+  top: 78px;
+  left: 14px;
+  right: auto;
+  z-index: 40;
+  width: min(440px, calc(100vw - 28px));
+  max-height: calc(100vh - 96px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  padding-bottom: 12px;
+}
+.import-report-panel .panel-head {
+  margin-bottom: 0;
+  flex-shrink: 0;
+  gap: 8px;
+}
+.import-report-panel .panel-head > div {
+  min-width: 0;
+}
+.import-report-panel .panel-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 1.05rem;
+}
+.import-report-panel .sub {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  opacity: 0.68;
+  line-height: 1.3;
+}
+.import-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  flex-shrink: 0;
+}
+.import-kpi {
+  min-width: 0;
+  padding: 8px 9px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.import-kpi span {
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+.import-kpi b {
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.import-kpi small {
+  font-weight: 500;
+  opacity: 0.65;
+  font-size: 0.72rem;
+}
+.import-csv-files {
+  margin: 0;
+  font-size: 0.75rem;
+  opacity: 0.62;
+  line-height: 1.3;
+  flex-shrink: 0;
+}
+.import-sev-toggles {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.import-sev-btn {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: inherit;
+  border-radius: 999px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.import-sev-btn.sev-error { color: #e03131; }
+.import-sev-btn.sev-warn { color: #e8590c; }
+.import-sev-btn.sev-info { color: #1c7ed6; }
+.import-sev-btn.on {
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.import-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+.import-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: inherit;
+}
+.import-search svg { flex-shrink: 0; opacity: 0.5; }
+.import-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 8px 0;
+  font: inherit;
+  font-size: 0.86rem;
+  outline: none;
+}
+.import-filter-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.import-filter-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+.import-filter-label small {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.72rem;
+}
+.import-chip-wrap .chip {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+.import-chip-wrap-scroll {
+  max-height: 88px;
+  overflow-y: auto;
+}
+.import-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.75rem;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.import-reset {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  cursor: pointer;
+  opacity: 0.85;
+  padding: 0;
+}
+.import-issue-list {
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 120px;
+  min-width: 0;
+  padding-right: 2px;
+}
+.import-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.import-issue {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  min-width: 0;
+}
+.import-issue.sev-error {
+  border-color: color-mix(in srgb, #e03131 45%, transparent);
+  background: color-mix(in srgb, #e03131 6%, transparent);
+}
+.import-issue.sev-warn {
+  border-color: color-mix(in srgb, #e8590c 40%, transparent);
+  background: color-mix(in srgb, #e8590c 6%, transparent);
+}
+.import-issue.sev-info {
+  border-color: color-mix(in srgb, #1c7ed6 30%, transparent);
+}
+.import-issue-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.import-pill {
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  line-height: 1.4;
+}
+.import-pill.sev-error { color: #ff6b6b; background: color-mix(in srgb, #e03131 18%, transparent); }
+.import-pill.sev-warn { color: #ffa94d; background: color-mix(in srgb, #e8590c 18%, transparent); }
+.import-pill.sev-info { color: #74c0fc; background: color-mix(in srgb, #1c7ed6 18%, transparent); }
+.import-issue-type {
+  font-size: 0.72rem;
+  opacity: 0.72;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-issue-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.import-detail {
+  margin: 0;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  opacity: 0.88;
+}
+.import-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.import-chips span {
+  max-width: 100%;
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  overflow-wrap: anywhere;
+}
+.import-hint-fold {
+  font-size: 0.78rem;
+  opacity: 0.8;
+}
+.import-hint-fold summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+.import-hint-fold p {
+  margin: 6px 0 0;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }

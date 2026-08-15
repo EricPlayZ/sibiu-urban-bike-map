@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "start": "vite --host --port 5500"
+    "start": "vite --host --port 5500",
+    "fetch-osm": "node scripts/fetch-osm-streets.mjs"
   },
   "dependencies": {
     "framer-motion": "^12.23.12",

@@ -21,7 +21,7 @@ export const LAYER_META: { id: MapLayerId; label: string; hint: string }[] = [
   {
     id: "bikeDoor",
     label: "Pistă pe carosabil",
-    hint: "Între carosabil și mașinile parcate — fără protecție",
+    hint: "Între carosabil și mașinile parcate (pistă + parcare amenajată)",
   },
   { id: "reserved", label: "Parcare amenajată", hint: "Parcare pe trotuar amenajată" },
   { id: "illegal", label: "Parcare ilegală", hint: "Parcare ilegală pe trotuar" },

@@ -5,6 +5,7 @@ import { FiltersPanel } from "./components/FiltersPanel";
 import { StatsPanel } from "./components/StatsPanel";
 import { EditsPanel } from "./components/EditsPanel";
 import { DetailSheet } from "./components/DetailSheet";
+import { ImportReportPanel } from "./components/ImportReportPanel";
 import { Loader, MobileDock, Toast } from "./components/Chrome";
 import { useApp } from "./store";
 import { applyDocumentTheme } from "./lib/theme";
@@ -36,6 +37,7 @@ export default function App() {
       <FiltersPanel />
       <StatsPanel />
       <EditsPanel />
+      <ImportReportPanel />
       <DetailSheet />
       <MobileDock />
       <Toast />

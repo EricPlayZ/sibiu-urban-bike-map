@@ -81,22 +81,24 @@ export function streetHasIllegalParking(props: Record<string, unknown> | null | 
   return featureHasIllegalParking(props) || hasIllegalParking(m);
 }
 
-/** Pistă fără mașini parcate pe lângă ea. */
+/** Pistă fără parcare amenajată pe lângă ea. */
 export function featureHasSafeBikeLane(props: Record<string, unknown> | null | undefined) {
-  return featureHasBikeLane(props) && !featureHasIllegalParking(props);
+  return featureHasBikeLane(props) && !featureHasReservedParking(props) && !geoFlag(props, "bike_door");
 }
 
-/** Pistă între carosabil și mașinile parcate. */
+/** Pistă pe carosabil = pistă + parcare amenajată (sau flag bike_door din CSV). */
 export function featureHasDoorZoneBikeLane(props: Record<string, unknown> | null | undefined) {
-  return featureHasBikeLane(props) && featureHasIllegalParking(props);
+  if (geoFlag(props, "bike_door")) return true;
+  return featureHasBikeLane(props) && featureHasReservedParking(props);
 }
 
 export function streetHasSafeBikeLane(props: Record<string, unknown> | null | undefined, m?: Measurement | null) {
-  return streetHasBikeLane(props, m) && !streetHasIllegalParking(props, m);
+  return streetHasBikeLane(props, m) && !featureHasReservedParking(props) && !geoFlag(props, "bike_door");
 }
 
 export function streetHasDoorZoneBikeLane(props: Record<string, unknown> | null | undefined, m?: Measurement | null) {
-  return streetHasBikeLane(props, m) && streetHasIllegalParking(props, m);
+  if (geoFlag(props, "bike_door")) return true;
+  return streetHasBikeLane(props, m) && featureHasReservedParking(props);
 }
 
 /**
@@ -125,7 +127,7 @@ export function streetHasSurveyedAttributes(
   if (hasIllegalParking(m)) return true;
   if (m && hasCrossSectionWidths(m)) return true;
   if (m && (n(m.row_width_m) > 0 || n(m.free_sidewalk1_m) + n(m.free_sidewalk2_m) > 0)) {
-    if (m.source === "seed" || m.source === "local" || hasMeaningfulLocalEdit(m)) return true;
+    if (m.source === "seed" || m.source === "csv" || m.source === "local" || hasMeaningfulLocalEdit(m)) return true;
   }
   if (hasMeaningfulLocalEdit(m)) return true;
   return false;
@@ -339,7 +341,10 @@ export function slugify(text: string) {
 }
 
 export function normalizeStreetName(name: string) {
-  return slugify(String(name || "").replace(/^strada\s+/i, "").replace(/^str\.?\s+/i, ""));
+  let s = String(name || "").trim();
+  // Scoatem prefixe comune (CSV și OSM) înainte de slugify (fără diacritice).
+  s = s.replace(/^(strada|stradă|str\.?|bulevardul|bd\.?|calea|aleea|piața|piata)\s+/i, "");
+  return slugify(s);
 }
 
 export function makeStreetId(feature: GeoJSON.Feature, index: number) {

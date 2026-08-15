@@ -9,7 +9,6 @@ import {
   loadCustomNeighborhoods,
   loadMeasurements,
   migrateV1,
-  normalizeSeedCatalog,
   purgeAllMeasurements,
   purgeEmptyOrFlagOnlyMeasurements,
   purgeExcelSeedMeasurements,
@@ -21,7 +20,6 @@ import {
   featureHasReservedParking,
   hasAnyEdit,
   makeBuildingId,
-  makeStreetId,
   resolveStreetMeasurement,
   slugify,
   streetHasBikeLane,
@@ -33,6 +31,7 @@ import {
 } from "./lib/space";
 import { assignFlagOffsets } from "./lib/streetPopup";
 import { VIEW_PRESETS, FOCUS_PRESETS, type FocusId, type LayerVisibility, type MapLayerId } from "./lib/layers";
+import { runImportPipeline, type ImportReport } from "./lib/importPipeline";
 
 type Filters = {
   /** Slug-uri cartiere selectate (multi). Goale = nimic pe hartă. */
@@ -64,13 +63,15 @@ type AppState = {
   statsOpen: boolean;
   themeOpen: boolean;
   editsOpen: boolean;
+  importReportOpen: boolean;
   sheetOpen: boolean;
   selected: Selected;
   streets: GeoJSON.FeatureCollection | null;
   neighborhoods: GeoJSON.FeatureCollection | null;
   measurements: Record<string, Measurement>;
-  /** Catalog măsurători din measurements-seed.json (cheie cartier::strada). */
+  /** Catalog măsurători din CSV pe cartier (cheie cartier::strada). */
   seedMeasurements: Record<string, Measurement>;
+  importReport: ImportReport | null;
   buildingTypes: Record<string, { type: string }>;
   buildings: GeoJSON.FeatureCollection | null;
   schools: GeoJSON.FeatureCollection | null;
@@ -101,6 +102,8 @@ type AppState = {
   toggleTheme: () => void;
   toggleEdits: () => void;
   closeEdits: () => void;
+  toggleImportReport: () => void;
+  closeImportReport: () => void;
   selectStreet: (id: string, name: string, props: Record<string, unknown>) => void;
   selectBuilding: (id: string, type: string) => void;
   closeSheet: () => void;
@@ -138,12 +141,14 @@ export const useApp = create<AppState>((set, get) => ({
   statsOpen: true,
   themeOpen: false,
   editsOpen: false,
+  importReportOpen: false,
   sheetOpen: false,
   selected: null,
   streets: null,
   neighborhoods: null,
   measurements: {},
   seedMeasurements: {},
+  importReport: null,
   buildingTypes: {},
   buildings: null,
   schools: null,
@@ -159,9 +164,8 @@ export const useApp = create<AppState>((set, get) => ({
 
   init: async () => {
     applyDocumentTheme(get().uiTheme);
-    set({ loadingMsg: "Încărcăm străzile…" });
-    const [streets, limits, counts, schools, seedRaw] = await Promise.all([
-      fetch("./streets.geojson").then((r) => r.json()) as Promise<GeoJSON.FeatureCollection>,
+    set({ loadingMsg: "Importăm geometrie + CSV…" });
+    const [limits, counts, schools] = await Promise.all([
       fetch("./neighborhood_limits.geojson").then((r) => r.json()) as Promise<GeoJSON.FeatureCollection>,
       fetch("./data/buildings-counts.json")
         .then((r) => r.json())
@@ -172,17 +176,11 @@ export const useApp = create<AppState>((set, get) => ({
       fetch("./schools.geojson")
         .then((r) => r.json())
         .catch(() => ({ type: "FeatureCollection", features: [] })) as Promise<GeoJSON.FeatureCollection>,
-      fetch("./data/measurements-seed.json")
-        .then((r) => r.json())
-        .catch(() => ({})) as Promise<unknown>,
     ]);
 
-    streets.features.forEach((f, i) => {
-      f.properties = f.properties || {};
-      (f.properties as { sid: string }).sid = makeStreetId(f, i);
-    });
+    const imported = await runImportPipeline(limits);
+    const streets = imported.streets;
 
-    // Curățăm seed-ul vechi din localStorage; catalogul rămâne în seedMeasurements (read-only).
     purgeExcelSeedMeasurements();
     migrateV1(streets);
     purgeEmptyOrFlagOnlyMeasurements();
@@ -204,6 +202,8 @@ export const useApp = create<AppState>((set, get) => ({
       .filter((n) => n.slug)
       .sort((a, b) => a.name.localeCompare(b.name, "ro"));
 
+    const errorCount = imported.report.issues.filter((i) => i.severity === "error").length;
+
     set({
       streets,
       neighborhoods: {
@@ -211,7 +211,10 @@ export const useApp = create<AppState>((set, get) => ({
         features: [...(limits.features || []), ...(custom.features || [])],
       },
       measurements: loadMeasurements(),
-      seedMeasurements: normalizeSeedCatalog(seedRaw),
+      seedMeasurements: imported.csvMeasurements,
+      importReport: imported.report,
+      importReportOpen: true,
+      statsOpen: false,
       buildingTypes: loadBuildingTypes(),
       buildingCounts: counts,
       schools,
@@ -225,6 +228,10 @@ export const useApp = create<AppState>((set, get) => ({
       ready: true,
       loadingMsg: "",
     });
+
+    if (errorCount > 0) {
+      get().showToast(`Import: ${errorCount} erori de potrivire CSV↔OSM`);
+    }
   },
 
   setEditMode: (v) => {
@@ -310,18 +317,28 @@ export const useApp = create<AppState>((set, get) => ({
     set({ filters: { ...get().filters, schools: allOn ? [] : list } });
   },
   toggleFilters: () =>
-    set({ filtersOpen: !get().filtersOpen, basemapOpen: false, themeOpen: false, statsOpen: false, editsOpen: false }),
+    set({ filtersOpen: !get().filtersOpen, basemapOpen: false, themeOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false }),
   closeFilters: () => set({ filtersOpen: false }),
   closeStats: () => set({ statsOpen: false }),
   toggleBasemap: () =>
-    set({ basemapOpen: !get().basemapOpen, filtersOpen: false, themeOpen: false, statsOpen: false, editsOpen: false }),
+    set({ basemapOpen: !get().basemapOpen, filtersOpen: false, themeOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false }),
   toggleStats: () =>
-    set({ statsOpen: !get().statsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, editsOpen: false }),
+    set({ statsOpen: !get().statsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, editsOpen: false, importReportOpen: false }),
   toggleTheme: () =>
-    set({ themeOpen: !get().themeOpen, filtersOpen: false, basemapOpen: false, statsOpen: false, editsOpen: false }),
+    set({ themeOpen: !get().themeOpen, filtersOpen: false, basemapOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false }),
   toggleEdits: () =>
-    set({ editsOpen: !get().editsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, statsOpen: false }),
+    set({ editsOpen: !get().editsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, statsOpen: false, importReportOpen: false }),
   closeEdits: () => set({ editsOpen: false }),
+  toggleImportReport: () =>
+    set({
+      importReportOpen: !get().importReportOpen,
+      filtersOpen: false,
+      basemapOpen: false,
+      themeOpen: false,
+      statsOpen: false,
+      editsOpen: false,
+    }),
+  closeImportReport: () => set({ importReportOpen: false }),
 
   selectStreet: (id, name, props) =>
     set({
@@ -332,6 +349,7 @@ export const useApp = create<AppState>((set, get) => ({
       themeOpen: false,
       editsOpen: false,
       statsOpen: false,
+      importReportOpen: false,
     }),
   selectBuilding: (id, type) =>
     set({
@@ -342,6 +360,7 @@ export const useApp = create<AppState>((set, get) => ({
       themeOpen: false,
       editsOpen: false,
       statsOpen: false,
+      importReportOpen: false,
     }),
   closeSheet: () => set({ sheetOpen: false, selected: null }),
 

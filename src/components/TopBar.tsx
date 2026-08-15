@@ -14,6 +14,7 @@ import {
   ChartColumn,
   Monitor,
   GraduationCap,
+  Bug,
   X,
 } from "lucide-react";
 import { useApp } from "../store";
@@ -33,11 +34,14 @@ export function TopBar() {
   const toggleStats = useApp((s) => s.toggleStats);
   const toggleTheme = useApp((s) => s.toggleTheme);
   const toggleEdits = useApp((s) => s.toggleEdits);
+  const toggleImportReport = useApp((s) => s.toggleImportReport);
   const filtersOpen = useApp((s) => s.filtersOpen);
   const basemapOpen = useApp((s) => s.basemapOpen);
   const themeOpen = useApp((s) => s.themeOpen);
   const statsOpen = useApp((s) => s.statsOpen);
   const editsOpen = useApp((s) => s.editsOpen);
+  const importReportOpen = useApp((s) => s.importReportOpen);
+  const importReport = useApp((s) => s.importReport);
   const measurements = useApp((s) => s.measurements);
   const startDraw = useApp((s) => s.startDraw);
   const cancelDraw = useApp((s) => s.cancelDraw);
@@ -96,6 +100,10 @@ export function TopBar() {
           <button type="button" className={`chip-btn ${statsOpen ? "on" : ""}`} onClick={toggleStats} aria-pressed={statsOpen}>
             <ChartColumn size={16} strokeWidth={2.25} aria-hidden />
             Stats
+          </button>
+          <button type="button" className={`chip-btn ${importReportOpen ? "on" : ""}`} onClick={toggleImportReport} aria-pressed={importReportOpen}>
+            <Bug size={16} strokeWidth={2.25} aria-hidden />
+            Import{importReport ? ` (${importReport.issues.filter((i) => i.severity === "error").length})` : ""}
           </button>
           <button type="button" className={`chip-btn ${editsOpen ? "on" : ""}`} onClick={toggleEdits} aria-pressed={editsOpen}>
             <ListTree size={16} strokeWidth={2.25} aria-hidden />
