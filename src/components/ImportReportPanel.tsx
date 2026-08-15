@@ -11,9 +11,11 @@ const CODE_LABEL: Record<MatchIssueCode, string> = {
   csv_empty_widths: "Lățimi goale",
   csv_no_osm_match: "Fără potrivire OSM",
   csv_ambiguous_osm: "Potrivire ambiguă",
+  csv_multi_osm_segments: "Mai multe segmente OSM",
   csv_merged_segments: "Segmente mediate",
   osm_unassigned_neighborhood: "Fără cartier",
   osm_no_csv_in_neighborhood: "OSM fără CSV",
+  osm_clipped_neighborhood: "Tăiat pe cartiere",
   csv_parse_columns: "Coloane CSV",
   geometry_source: "Sursă geometrie",
 };

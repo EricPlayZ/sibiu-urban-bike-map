@@ -3,8 +3,22 @@
 "name": "schools",
 "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
 "features": [
-{ "type": "Feature", "properties": { "id": 0, "denumire": "Scoala Gimnaziala nr. 4", "slug": "scoala_4" }, "geometry": { "type": "Point", "coordinates": [ 24.161622469242058, 45.790926009674656 ] } },
+{ "type": "Feature", "properties": { "id": 0, "denumire": "Școala Gimnazială nr. 4", "slug": "scoala_4" }, "geometry": { "type": "Point", "coordinates": [ 24.161622469242058, 45.790926009674656 ] } },
 { "type": "Feature", "properties": { "id": 1, "denumire": "Școala Gimnazială \"Ion Luca Caragiale\"", "slug": "scoala_caragiale" }, "geometry": { "type": "Point", "coordinates": [ 24.141507894258314, 45.776648210052507 ] } },
-{ "type": "Feature", "properties": { "id": 2, "denumire": "Școala Gimnazială nr. 8", "slug": "scoala_8" }, "geometry": { "type": "Point", "coordinates": [ 24.165130147403435, 45.803944518770685 ] } }
+{ "type": "Feature", "properties": { "id": 2, "denumire": "Școala Gimnazială nr. 8", "slug": "scoala_8" }, "geometry": { "type": "Point", "coordinates": [ 24.165130147403435, 45.803944518770685 ] } },
+{ "type": "Feature", "properties": { "id": 3, "denumire": "Liceul Teoretic \"Constantin Noica\"", "slug": "liceu_constantin_noica" }, "geometry": { "type": "Point", "coordinates": [ 24.154137523090643, 45.77728601637012 ] } },
+{ "type": "Feature", "properties": { "id": 4, "denumire": "Școala Gimnazială \"Nicolae Iorga\"", "slug": "scoala_nicolae_iorga" }, "geometry": { "type": "Point", "coordinates": [ 24.152134361739385, 45.778394016285482 ] } },
+{ "type": "Feature", "properties": { "id": 5, "denumire": "Școala Gimnazială nr. 21", "slug": "scoala_21" }, "geometry": { "type": "Point", "coordinates": [ 24.158871374108859, 45.780640289155222 ] } },
+{ "type": "Feature", "properties": { "id": 6, "denumire": "Școala Gimnazială \"Radu Selejan\"", "slug": "scoala_radu_selejan" }, "geometry": { "type": "Point", "coordinates": [ 24.167233042234312, 45.783398847393691 ] } },
+{ "type": "Feature", "properties": { "id": 7, "denumire": "Școala Gimnazială nr. 1", "slug": "scoala_1" }, "geometry": { "type": "Point", "coordinates": [ 24.133868701674377, 45.785568039422202 ] } },
+{ "type": "Feature", "properties": { "id": 8, "denumire": "Școala Gimnazială nr. 2", "slug": "scoala_2" }, "geometry": { "type": "Point", "coordinates": [ 24.153630000406874, 45.798286709797708 ] } },
+{ "type": "Feature", "properties": { "id": 9, "denumire": "Școala Gimnazială \"Regina Maria\"", "slug": "scoala_regina_maria" }, "geometry": { "type": "Point", "coordinates": [ 24.146585119995979, 45.789294538305583 ] } },
+{ "type": "Feature", "properties": { "id": 10, "denumire": "Școala Gimnazială nr. 10", "slug": "scoala_10" }, "geometry": { "type": "Point", "coordinates": [ 24.118355737713618, 45.789558261711534 ] } },
+{ "type": "Feature", "properties": { "id": 11, "denumire": "Școala Gimnazială nr. 11", "slug": "scoala_11" }, "geometry": { "type": "Point", "coordinates": [ 24.183384015392743, 45.811539416570518 ] } },
+{ "type": "Feature", "properties": { "id": 12, "denumire": "Școala Gimnazială nr. 12", "slug": "scoala_12" }, "geometry": { "type": "Point", "coordinates": [ 24.138120351677053, 45.802104648419594 ] } },
+{ "type": "Feature", "properties": { "id": 13, "denumire": "Școala Gimnazială nr. 13", "slug": "scoala_13" }, "geometry": { "type": "Point", "coordinates": [ 24.145545358274813, 45.806647140817518 ] } },
+{ "type": "Feature", "properties": { "id": 14, "denumire": "Colegiul Național Pedagogic \"Andrei Șaguna\"", "slug": "liceu_andrei_saguna" }, "geometry": { "type": "Point", "coordinates": [ 24.154088736576877, 45.782081981472658 ] } },
+{ "type": "Feature", "properties": { "id": 15, "denumire": "Școala Gimnazială nr. 18", "slug": "scoala_18" }, "geometry": { "type": "Point", "coordinates": [ 24.145435883300767, 45.808291331499397 ] } },
+{ "type": "Feature", "properties": { "id": 16, "denumire": "Școala Gimnazială \"Ioan Slavici\"", "slug": "scoala_ioan_slavici" }, "geometry": { "type": "Point", "coordinates": [ 24.170259298509105, 45.801162009417126 ] } }
 ]
 }

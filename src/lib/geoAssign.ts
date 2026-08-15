@@ -16,7 +16,35 @@ function pointInRing(pt: LngLat, ring: number[][]) {
   return inside;
 }
 
+function polygonRings(geom: GeoJSON.Polygon | GeoJSON.MultiPolygon): number[][][] {
+  if (geom.type === "Polygon") return geom.coordinates;
+  return geom.coordinates.flat();
+}
+
+function pointOnSeg(pt: LngLat, a: number[], b: number[], eps = 1e-12) {
+  const abx = b[0] - a[0];
+  const aby = b[1] - a[1];
+  const apx = pt[0] - a[0];
+  const apy = pt[1] - a[1];
+  const ab2 = abx * abx + aby * aby;
+  if (ab2 < eps) return apx * apx + apy * apy < eps;
+  const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / ab2));
+  const dx = apx - t * abx;
+  const dy = apy - t * aby;
+  return dx * dx + dy * dy < eps;
+}
+
+function pointOnBoundary(pt: LngLat, geom: GeoJSON.Polygon | GeoJSON.MultiPolygon) {
+  for (const ring of polygonRings(geom)) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      if (pointOnSeg(pt, ring[j], ring[i])) return true;
+    }
+  }
+  return false;
+}
+
 export function pointInPolygon(pt: LngLat, geom: GeoJSON.Polygon | GeoJSON.MultiPolygon) {
+  if (pointOnBoundary(pt, geom)) return true;
   if (geom.type === "Polygon") {
     const [outer, ...holes] = geom.coordinates;
     if (!pointInRing(pt, outer)) return false;
@@ -27,6 +55,186 @@ export function pointInPolygon(pt: LngLat, geom: GeoJSON.Polygon | GeoJSON.Multi
     if (!pointInRing(pt, outer)) return false;
     return !holes.some((h) => pointInRing(pt, h));
   });
+}
+
+function lerp(a: LngLat, b: LngLat, t: number): LngLat {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+}
+
+/** Intersecții AB cu CD; t pe AB în (0,1). */
+function segIntersectT(a: LngLat, b: LngLat, c: number[], d: number[]): number | null {
+  const rx = b[0] - a[0];
+  const ry = b[1] - a[1];
+  const sx = d[0] - c[0];
+  const sy = d[1] - c[1];
+  const denom = rx * sy - ry * sx;
+  if (Math.abs(denom) < 1e-18) return null;
+  const qx = c[0] - a[0];
+  const qy = c[1] - a[1];
+  const t = (qx * sy - qy * sx) / denom;
+  const u = (qx * ry - qy * rx) / denom;
+  if (t > 1e-9 && t < 1 - 1e-9 && u >= -1e-9 && u <= 1 + 1e-9) return t;
+  return null;
+}
+
+function uniqueTs(ts: number[]) {
+  const sorted = [...ts].sort((x, y) => x - y);
+  const out: number[] = [];
+  for (const t of sorted) {
+    if (!out.length || Math.abs(t - out[out.length - 1]) > 1e-9) out.push(t);
+  }
+  return out;
+}
+
+function lineLength2(coords: LngLat[]) {
+  let s = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const dx = coords[i][0] - coords[i - 1][0];
+    const dy = coords[i][1] - coords[i - 1][1];
+    s += Math.hypot(dx, dy);
+  }
+  return s;
+}
+
+function ringArea(ring: number[][]) {
+  let a = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    a += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+  }
+  return Math.abs(a) / 2;
+}
+
+function polygonArea(geom: GeoJSON.Polygon | GeoJSON.MultiPolygon) {
+  if (geom.type === "Polygon") {
+    const [outer, ...holes] = geom.coordinates;
+    return ringArea(outer) - holes.reduce((s, h) => s + ringArea(h), 0);
+  }
+  return geom.coordinates.reduce((s, poly) => {
+    const [outer, ...holes] = poly;
+    return s + ringArea(outer) - holes.reduce((t, h) => t + ringArea(h), 0);
+  }, 0);
+}
+
+function pieceSample(coords: LngLat[]): LngLat {
+  if (coords.length >= 2) {
+    const i = Math.max(1, Math.floor(coords.length / 2));
+    return lerp(coords[i - 1], coords[i], 0.5);
+  }
+  return coords[0];
+}
+
+function clipLineByPredicate(coords: LngLat[], rings: number[][][], keepMid: (mid: LngLat) => boolean): LngLat[][] {
+  if (coords.length < 2) return [];
+  const parts: LngLat[][] = [];
+  let current: LngLat[] = [];
+
+  const flush = () => {
+    if (current.length >= 2 && lineLength2(current) > 1e-8) parts.push(current);
+    current = [];
+  };
+  const pushPt = (p: LngLat) => {
+    const last = current[current.length - 1];
+    if (last && Math.abs(last[0] - p[0]) < 1e-12 && Math.abs(last[1] - p[1]) < 1e-12) return;
+    current.push(p);
+  };
+
+  for (let i = 1; i < coords.length; i++) {
+    const a = coords[i - 1];
+    const b = coords[i];
+    const ts = [0, 1];
+    for (const ring of rings) {
+      for (let k = 0, j = ring.length - 1; k < ring.length; j = k++) {
+        const t = segIntersectT(a, b, ring[j], ring[k]);
+        if (t != null) ts.push(t);
+      }
+    }
+    const cuts = uniqueTs(ts);
+    for (let c = 1; c < cuts.length; c++) {
+      const t0 = cuts[c - 1];
+      const t1 = cuts[c];
+      const mid = lerp(a, b, (t0 + t1) / 2);
+      if (keepMid(mid)) {
+        pushPt(lerp(a, b, t0));
+        pushPt(lerp(a, b, t1));
+      } else {
+        flush();
+      }
+    }
+  }
+  flush();
+  return parts;
+}
+
+/**
+ * Taie o LineString la interiorul poligonului. Returnează una sau mai multe linii.
+ * Punctele de pe contur sunt considerate înăuntru, ca porțiunile să se întâlnească pe limită.
+ */
+export function clipLineToPolygon(coords: LngLat[], geom: GeoJSON.Polygon | GeoJSON.MultiPolygon): LngLat[][] {
+  return clipLineByPredicate(coords, polygonRings(geom), (mid) => pointInPolygon(mid, geom));
+}
+
+export function geometryLineStrings(geom: GeoJSON.Geometry | null | undefined): LngLat[][] {
+  if (!geom) return [];
+  if (geom.type === "LineString") return [geom.coordinates as LngLat[]];
+  if (geom.type === "MultiLineString") return geom.coordinates as LngLat[][];
+  return [];
+}
+
+export type NeighborhoodPoly = {
+  slug: string;
+  name: string;
+  geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
+};
+
+/** Porțiuni din linie care nu cad în niciun cartier activ (restul după clip). */
+export function clipLineOutsideNeighborhoods(coords: LngLat[], neighborhoods: NeighborhoodPoly[]): LngLat[][] {
+  if (coords.length < 2) return [];
+  const rings = neighborhoods.flatMap((n) => polygonRings(n.geometry));
+  return clipLineByPredicate(coords, rings, (mid) => !neighborhoods.some((n) => pointInPolygon(mid, n.geometry)));
+}
+
+/** Hipodrom I–IV etc.: `dissolve: true` e doar subdiviziune; folosim poligonul părinte. */
+export function neighborhoodIsActive(props: { dissolve?: unknown } | null | undefined): boolean {
+  const d = props?.dissolve;
+  return d !== true && d !== "true";
+}
+
+export type ClippedStreetPiece = {
+  neighborhood: NeighborhoodPoly;
+  coordinates: LngLat[];
+};
+
+/**
+ * Porțiuni din geometria străzii care cad în fiecare cartier.
+ * Dacă poligoanele se suprapun (ex. Hipodrom vs Hipodrom I–IV), rămâne cartierul cel mai mic.
+ */
+export function clipStreetToNeighborhoods(
+  geom: GeoJSON.Geometry | null | undefined,
+  neighborhoods: NeighborhoodPoly[]
+): ClippedStreetPiece[] {
+  if (!geom || !neighborhoods.length) return [];
+  const lines = geometryLineStrings(geom);
+  const streetBb = geomBbox(geom);
+  const areas = new Map(neighborhoods.map((n) => [n.slug, polygonArea(n.geometry)]));
+  const out: ClippedStreetPiece[] = [];
+  for (const n of neighborhoods) {
+    const nb = geomBbox(n.geometry);
+    if (streetBb && nb && !bboxesOverlap(streetBb, nb, 0.0007)) continue;
+    for (const line of lines) {
+      for (const coordinates of clipLineToPolygon(line, n.geometry)) {
+        const sample = pieceSample(coordinates);
+        const nested = neighborhoods.some(
+          (other) =>
+            other.slug !== n.slug &&
+            (areas.get(other.slug) || 0) < (areas.get(n.slug) || 0) &&
+            pointInPolygon(sample, other.geometry)
+        );
+        if (nested) continue;
+        out.push({ neighborhood: n, coordinates });
+      }
+    }
+  }
+  return out;
 }
 
 function lineCoords(geom: GeoJSON.Geometry | null | undefined): LngLat[] {
@@ -82,21 +290,20 @@ export function lineSortKey(geom: GeoJSON.Geometry | null | undefined): number {
   return pt[0] * 1000 + pt[1];
 }
 
-export type NeighborhoodPoly = {
-  slug: string;
-  name: string;
-  geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
-};
-
 /**
  * Asignare cartier:
  * 1) cel mai bun coverage (vârfuri în poligon) dacă > 0
  * 2) altfel midpoint în poligon
  * 3) altfel overlap bbox (străzi pe contur / imediat lângă poligon, ex. Ceferiștilor)
+ *
+ * Bbox e doar pentru străzi fără omolog în poligon. Pipeline-ul nu trebuie să
+ * asigneze via bbox un nume care are deja piese clip/coverage în acel cartier
+ * (continuări OSM în afara limitei, ex. Bulevardul Mihai Viteazul lângă Hipodrom).
  */
 export function assignStreetToNeighborhood(
   feature: GeoJSON.Feature,
-  neighborhoods: NeighborhoodPoly[]
+  neighborhoods: NeighborhoodPoly[],
+  options?: { allowBbox?: boolean }
 ): { slug: string; name: string; method: "coverage" | "midpoint" | "bbox" } | null {
   if (!feature.geometry || !neighborhoods.length) return null;
 
@@ -115,6 +322,8 @@ export function assignStreetToNeighborhood(
       if (pointInPolygon(pt, n.geometry)) return { slug: n.slug, name: n.name, method: "midpoint" };
     }
   }
+
+  if (options?.allowBbox === false) return null;
 
   const streetBb = geomBbox(feature.geometry);
   if (streetBb) {

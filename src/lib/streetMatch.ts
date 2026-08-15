@@ -7,9 +7,11 @@ export type MatchIssueCode =
   | "csv_empty_widths"
   | "csv_no_osm_match"
   | "csv_ambiguous_osm"
+  | "csv_multi_osm_segments"
   | "csv_merged_segments"
   | "osm_unassigned_neighborhood"
   | "osm_no_csv_in_neighborhood"
+  | "osm_clipped_neighborhood"
   | "csv_parse_columns"
   | "geometry_source";
 
@@ -24,11 +26,26 @@ export type ImportIssue = {
   hint?: string;
 };
 
+/** Indici 1–20 = duplicate CSV de secțiune (Egalitatii 1); nu ani (Anul 1907). */
+const MAX_CSV_SEGMENT_INDEX = 20;
+
 export function stripSegmentSuffix(name: string): { base: string; index: number | null } {
   const n = String(name || "").trim();
+  // „Ștefan cel Mare 1/2” — un singur token de secțiune, nu parte din nume.
+  const half = n.match(/^(.*?)(?:\s+|[_-])(1\/2)$/);
+  if (half) {
+    const base = half[1].trim();
+    if (base) return { base, index: 1 };
+  }
   const m = n.match(/^(.*?)(?:\s+|[_-])(\d+)$/);
   if (!m) return { base: n, index: null };
-  return { base: m[1].trim(), index: Number(m[2]) };
+  const base = m[1].trim();
+  const index = Number(m[2]);
+  // Token de sine stătător + index mic de secțiune. 1907 / alte numere semnificative rămân în nume.
+  if (!base || !Number.isInteger(index) || index < 1 || index > MAX_CSV_SEGMENT_INDEX) {
+    return { base: n, index: null };
+  }
+  return { base, index };
 }
 
 /** Cheie de potrivire: fără „Strada”, fără diacritice, lowercase slug. */
@@ -98,11 +115,12 @@ export function matchCsvNameToOsm(
   if (exact?.length) {
     if (exact.length > 1) {
       issues.push({
-        code: "csv_ambiguous_osm",
+        code: "csv_multi_osm_segments",
         severity: "info",
         neighborhood_slug: neighborhoodSlug,
         csv_name: csvName,
         osm_name: exact[0].name,
+        osm_id: (exact[0].feature.properties as { osm_id?: string | number } | null)?.osm_id,
         detail: `CSV „${csvName}” → ${exact.length} segmente OSM; aplicăm aceeași măsurătoare pe toate.`,
       });
     }

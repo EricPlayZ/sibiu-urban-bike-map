@@ -16,6 +16,7 @@ import {
   saveCustomNeighborhoods,
   saveMeasurement,
 } from "./lib/store";
+import { neighborhoodIsActive } from "./lib/geoAssign";
 import {
   featureHasReservedParking,
   hasAnyEdit,
@@ -185,8 +186,11 @@ export const useApp = create<AppState>((set, get) => ({
     migrateV1(streets);
     purgeEmptyOrFlagOnlyMeasurements();
 
+    const officialFeatures = (limits.features || []).filter((f) =>
+      neighborhoodIsActive(f.properties as { dissolve?: unknown })
+    );
     const custom = loadCustomNeighborhoods();
-    const neighborhoodList = (limits.features || [])
+    const neighborhoodList = officialFeatures
       .map((f) => {
         const p = f.properties as { slug?: string; denumire?: string; name?: string };
         return { slug: p.slug || "", name: p.denumire || p.name || p.slug || "" };
@@ -208,13 +212,13 @@ export const useApp = create<AppState>((set, get) => ({
       streets,
       neighborhoods: {
         type: "FeatureCollection",
-        features: [...(limits.features || []), ...(custom.features || [])],
+        features: [...officialFeatures, ...(custom.features || [])],
       },
       measurements: loadMeasurements(),
       seedMeasurements: imported.csvMeasurements,
       importReport: imported.report,
       importReportOpen: true,
-      statsOpen: false,
+      statsOpen: true,
       buildingTypes: loadBuildingTypes(),
       buildingCounts: counts,
       schools,
@@ -462,7 +466,10 @@ export const useApp = create<AppState>((set, get) => ({
         set({
           neighborhoods: {
             type: "FeatureCollection",
-            features: [...(limits.features || []), ...loadCustomNeighborhoods().features],
+            features: [
+              ...(limits.features || []).filter((f) => neighborhoodIsActive(f.properties as { dissolve?: unknown })),
+              ...loadCustomNeighborhoods().features,
+            ],
           },
         });
       });

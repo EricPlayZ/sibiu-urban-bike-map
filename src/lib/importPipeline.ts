@@ -9,7 +9,15 @@ import {
   rowHasAnyWidth,
   type CsvStreetRow,
 } from "./csvImport";
-import { assignStreetToNeighborhood, type NeighborhoodPoly } from "./geoAssign";
+import {
+  assignStreetToNeighborhood,
+  clipLineOutsideNeighborhoods,
+  clipStreetToNeighborhoods,
+  geometryLineStrings,
+  neighborhoodIsActive,
+  type ClippedStreetPiece,
+  type NeighborhoodPoly,
+} from "./geoAssign";
 import { MEASUREMENT_CSV_SLUGS } from "./measurementsSlugs.generated";
 import { makeStreetId, normalizeStreetName, type Measurement } from "./space";
 import {
@@ -85,8 +93,9 @@ async function resolveCsvSlugs(neighborhoodSlugs: string[]): Promise<string[]> {
 function neighborhoodPolys(limits: GeoJSON.FeatureCollection): NeighborhoodPoly[] {
   return (limits.features || [])
     .map((f) => {
-      const p = (f.properties || {}) as { slug?: string; denumire?: string; name?: string };
+      const p = (f.properties || {}) as { slug?: string; denumire?: string; name?: string; dissolve?: unknown };
       const slug = String(p.slug || "").trim();
+      if (!neighborhoodIsActive(p)) return null;
       if (!slug || !f.geometry || (f.geometry.type !== "Polygon" && f.geometry.type !== "MultiPolygon")) {
         return null;
       }
@@ -164,37 +173,131 @@ export async function runImportPipeline(limits: GeoJSON.FeatureCollection): Prom
   const features: GeoJSON.Feature[] = [];
   let unassignedSamples = 0;
   const UNASSIGNED_SAMPLE_LIMIT = 25;
+  let featIndex = 0;
 
-  for (let i = 0; i < raw.features.length; i++) {
-    const f = raw.features[i];
+  const pushAssigned = (
+    geom: GeoJSON.Geometry,
+    baseProps: Record<string, unknown>,
+    n: { slug: string; name: string },
+    method: string
+  ) => {
     const copy: GeoJSON.Feature = {
       type: "Feature",
-      properties: { ...(f.properties || {}) },
-      geometry: f.geometry,
+      properties: { ...baseProps },
+      geometry: geom,
     };
     const p = copy.properties as Record<string, unknown>;
-    clearLegacyFlags(p);
-    p.sid = makeStreetId(copy, i);
-    const hit = assignStreetToNeighborhood(copy, polys);
-    if (hit) {
-      p.cartier = hit.slug;
-      p.cartier_name = hit.name;
-      p.cartier_assign = hit.method;
-    } else {
-      p.cartier = "";
-      if (unassignedSamples < UNASSIGNED_SAMPLE_LIMIT) {
-        unassignedSamples++;
-        issues.push({
-          code: "osm_unassigned_neighborhood",
-          severity: "warn",
-          osm_name: String(p.name || ""),
-          osm_id: (p.osm_id as string | number) || undefined,
-          detail: `„${p.name || p.sid}” în afara poligoanelor din neighborhood_limits.geojson.`,
-          hint: "Extinde limitele de cartier.",
-        });
-      }
-    }
+    p.cartier = n.slug;
+    p.cartier_name = n.name;
+    p.cartier_assign = method;
+    p.sid = makeStreetId(copy, featIndex++);
     features.push(copy);
+  };
+
+  const pushUnassigned = (geom: GeoJSON.Geometry, baseProps: Record<string, unknown>) => {
+    const copy: GeoJSON.Feature = {
+      type: "Feature",
+      properties: { ...baseProps },
+      geometry: geom,
+    };
+    const p = copy.properties as Record<string, unknown>;
+    p.cartier = "";
+    p.sid = makeStreetId(copy, featIndex++);
+    features.push(copy);
+    if (unassignedSamples < UNASSIGNED_SAMPLE_LIMIT) {
+      unassignedSamples++;
+      issues.push({
+        code: "osm_unassigned_neighborhood",
+        severity: "warn",
+        osm_name: String(p.name || ""),
+        osm_id: (p.osm_id as string | number) || undefined,
+        detail: `„${p.name || p.sid}” în afara poligoanelor din neighborhood_limits.geojson.`,
+        hint: "Extinde limitele de cartier.",
+      });
+    }
+  };
+
+  /** Cartiere care deja au geometrie în poligon (clip / coverage / midpoint) pentru un nume OSM. */
+  const inPolygonKeys = new Set<string>();
+  const markInPolygon = (slug: string, nameKey: string) => {
+    if (nameKey) inPolygonKeys.add(`${slug}::${nameKey}`);
+  };
+
+  type PreparedStreet = {
+    baseProps: Record<string, unknown>;
+    geometry: GeoJSON.Geometry | null | undefined;
+    pieces: ClippedStreetPiece[];
+    nameKey: string;
+  };
+
+  const prepared: PreparedStreet[] = [];
+  for (const f of raw.features) {
+    const baseProps: Record<string, unknown> = { ...(f.properties || {}) };
+    clearLegacyFlags(baseProps);
+    const nameKey = normalizeStreetName(String(baseProps.name || ""));
+    const pieces = clipStreetToNeighborhoods(f.geometry, polys);
+    if (pieces.length) {
+      for (const piece of pieces) markInPolygon(piece.neighborhood.slug, nameKey);
+    } else {
+      const probe: GeoJSON.Feature = { type: "Feature", properties: baseProps, geometry: f.geometry };
+      const inside = assignStreetToNeighborhood(probe, polys, { allowBbox: false });
+      if (inside) markInPolygon(inside.slug, nameKey);
+    }
+    prepared.push({ baseProps, geometry: f.geometry, pieces, nameKey });
+  }
+
+  const fallbackAssign = (
+    geom: GeoJSON.Geometry,
+    baseProps: Record<string, unknown>,
+    nameKey: string
+  ) => {
+    const probe: GeoJSON.Feature = { type: "Feature", properties: baseProps, geometry: geom };
+    const hit = assignStreetToNeighborhood(probe, polys);
+    if (!hit) return null;
+    if (hit.method !== "bbox" || !nameKey || !inPolygonKeys.has(`${hit.slug}::${nameKey}`)) return hit;
+    const allowed = polys.filter((p) => !inPolygonKeys.has(`${p.slug}::${nameKey}`));
+    return assignStreetToNeighborhood(probe, allowed);
+  };
+
+  for (const row of prepared) {
+    if (row.pieces.length) {
+      const nhoods = [...new Set(row.pieces.map((p) => p.neighborhood.slug))];
+      if (nhoods.length > 1) {
+        const osmName = String(row.baseProps.name || "");
+        const osmId = (row.baseProps.osm_id as string | number | undefined) || undefined;
+        for (const slug of nhoods) {
+          issues.push({
+            code: "osm_clipped_neighborhood",
+            severity: "info",
+            neighborhood_slug: slug,
+            osm_name: osmName || undefined,
+            osm_id: osmId,
+            detail: `OSM „${osmName || osmId || "?"}” tăiat pe limita dintre cartiere; porțiuni în ${nhoods.join(", ")} (${row.pieces.length} segmente).`,
+          });
+        }
+      }
+      for (const piece of row.pieces) {
+        pushAssigned(
+          { type: "LineString", coordinates: piece.coordinates },
+          row.baseProps,
+          piece.neighborhood,
+          "clip"
+        );
+      }
+      for (const line of geometryLineStrings(row.geometry)) {
+        for (const coordinates of clipLineOutsideNeighborhoods(line, polys)) {
+          // Restul e în afara poligoanelor (mijloc de subsegment). Nu-l reasignăm:
+          // un vârf de pe contur ar da coverage > 0 și ar păstra props-urile cartierului.
+          pushUnassigned({ type: "LineString", coordinates }, row.baseProps);
+        }
+      }
+      continue;
+    }
+
+    if (!row.geometry) continue;
+    const hit = fallbackAssign(row.geometry, row.baseProps, row.nameKey);
+    if (hit) pushAssigned(row.geometry, row.baseProps, hit, hit.method);
+    else pushUnassigned(row.geometry, row.baseProps);
   }
 
   const assignedCount = features.filter((f) => String((f.properties as { cartier?: string })?.cartier || "")).length;

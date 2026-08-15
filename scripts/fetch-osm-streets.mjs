@@ -23,16 +23,6 @@ const ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
 ];
 
-const OVERPASS_QUERY = `
-[out:json][timeout:300];
-// Municipiul Sibiu — relation 1252940; fallback bbox dacă area nu e disponibilă pe server
-(
-  way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|pedestrian)$"]["name"](area:3601252940);
-  way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|pedestrian)$"]["name"](45.75,24.08,45.83,24.22);
-);
-out body geom;
-`.trim();
-
 const HIGHWAY_KEEP = new Set([
   "motorway",
   "trunk",
@@ -45,6 +35,17 @@ const HIGHWAY_KEEP = new Set([
   "pedestrian",
   "service",
 ]);
+const HIGHWAY_RE = `^(${[...HIGHWAY_KEEP].join("|")})$`;
+
+const OVERPASS_QUERY = `
+[out:json][timeout:300];
+// Municipiul Sibiu — relation 1252940; fallback bbox dacă area nu e disponibilă pe server
+(
+  way["highway"~"${HIGHWAY_RE}"]["name"](area:3601252940);
+  way["highway"~"${HIGHWAY_RE}"]["name"](45.75,24.08,45.83,24.22);
+);
+out body geom;
+`.trim();
 
 async function fetchOverpass(query) {
   let lastErr;
@@ -72,8 +73,11 @@ async function fetchOverpass(query) {
 
 function waysToGeoJSON(osm) {
   const features = [];
+  const seen = new Set();
   for (const el of osm.elements || []) {
     if (el.type !== "way" || !el.geometry || !el.tags?.name) continue;
+    if (seen.has(el.id)) continue;
+    seen.add(el.id);
     const hw = el.tags.highway;
     if (!HIGHWAY_KEEP.has(hw)) continue;
     const coords = el.geometry.map((g) => [g.lon, g.lat]);
