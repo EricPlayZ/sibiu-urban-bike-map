@@ -422,6 +422,7 @@ function applyNeighborhoodStyle(map: Map) {
       map.setPaintProperty("nb-label", "text-halo-color", "#06140c");
       map.setPaintProperty("nb-label", "text-halo-width", 1.6);
     }
+    applyStreetLabelContrast(map, true);
   } else {
     map.setPaintProperty("nb-fill", "fill-color", "#0f7a4c");
     map.setPaintProperty("nb-fill", "fill-opacity", 0.07);
@@ -436,6 +437,7 @@ function applyNeighborhoodStyle(map: Map) {
       map.setPaintProperty("nb-label", "text-halo-color", "#f7fff9");
       map.setPaintProperty("nb-label", "text-halo-width", 1.8);
     }
+    applyStreetLabelContrast(map, false);
   }
   applySearchDim(map, useApp.getState().searchFocus?.hit ?? null);
 }
@@ -486,6 +488,8 @@ function ensureOverlayOrder(map: Map) {
     BLD + "-line",
     "nb-halo",
     "nb-line",
+    "streets-label-halo",
+    "streets-label",
     "nb-label",
     ...searchGlowOverlayLayerIds(),
   ];
@@ -585,7 +589,6 @@ function addSourcesAndLayers(map: Map) {
       },
     });
   }
-  applyNeighborhoodStyle(map);
 
   const lineLayout = { "line-cap": "round" as const, "line-join": "round" as const };
 
@@ -679,7 +682,115 @@ function addSourcesAndLayers(map: Map) {
     map.setPaintProperty("streets-edit", "line-width", lineWidthExpr(6));
   }
 
+  addStreetLabelLayer(map);
+  applyNeighborhoodStyle(map);
   ensureOverlayOrder(map);
+}
+
+const STREET_LABEL_MINZOOM = 14.2;
+const STREET_LABEL_ALL_ZOOM = 15.05;
+const MAJOR_STREET_HIGHWAYS = [
+  "primary",
+  "secondary",
+  "tertiary",
+  "trunk",
+  "primary_link",
+  "secondary_link",
+  "tertiary_link",
+  "trunk_link",
+  "unclassified",
+];
+
+function applyStreetLabelContrast(map: Map, darkBg: boolean) {
+  if (!map.getLayer("streets-label")) return;
+  // Contur închis + halo alb: literele rămân lizibile pe galben / verde / roz.
+  const fill = darkBg ? "#0b0d0c" : "#121412";
+  const knockout = "#ffffff";
+  const rim = darkBg ? "#050605" : "#0d0f0e";
+  if (map.getLayer("streets-label-halo")) {
+    map.setPaintProperty("streets-label-halo", "text-color", knockout);
+    map.setPaintProperty("streets-label-halo", "text-halo-color", rim);
+    map.setPaintProperty("streets-label-halo", "text-halo-width", darkBg ? 3.1 : 2.85);
+    map.setPaintProperty("streets-label-halo", "text-halo-blur", 0.05);
+  }
+  map.setPaintProperty("streets-label", "text-color", fill);
+  map.setPaintProperty("streets-label", "text-halo-color", knockout);
+  map.setPaintProperty("streets-label", "text-halo-width", darkBg ? 1.55 : 1.4);
+  map.setPaintProperty("streets-label", "text-halo-blur", 0);
+}
+
+function addStreetLabelLayer(map: Map) {
+  const filter: maplibregl.FilterSpecification = [
+    "all",
+    [">", ["length", ["to-string", ["coalesce", ["get", "name"], ""]]], 0],
+    [
+      "any",
+      [">=", ["zoom"], STREET_LABEL_ALL_ZOOM],
+      ["match", ["get", "highway"], MAJOR_STREET_HIGHWAYS, true, false],
+    ],
+  ];
+
+  const layout: maplibregl.SymbolLayerSpecification["layout"] = {
+    "symbol-placement": "line",
+    "symbol-spacing": ["interpolate", ["linear"], ["zoom"], 14.2, 420, 16, 280, 18, 220],
+    "text-field": ["get", "name"],
+    "text-font": ["Noto Sans Bold"],
+    "text-size": ["interpolate", ["linear"], ["zoom"], 14.2, 11.5, 16, 13, 18, 14.5],
+    "text-max-angle": 32,
+    "text-max-width": 28,
+    "text-letter-spacing": 0.03,
+    "text-padding": 2,
+    "text-keep-upright": true,
+    "text-optional": true,
+    "text-pitch-alignment": "viewport",
+    "text-rotation-alignment": "map",
+    "symbol-z-order": "viewport-y",
+  };
+
+  if (!map.getLayer("streets-label-halo")) {
+    map.addLayer({
+      id: "streets-label-halo",
+      type: "symbol",
+      source: SRC,
+      minzoom: STREET_LABEL_MINZOOM,
+      filter,
+      layout,
+      paint: {
+        "text-color": "#ffffff",
+        "text-halo-color": "#0d0f0e",
+        "text-halo-width": 2.85,
+        "text-halo-blur": 0.05,
+        "text-opacity": 1,
+      },
+    });
+  } else {
+    map.setFilter("streets-label-halo", filter);
+  }
+
+  if (!map.getLayer("streets-label")) {
+    map.addLayer({
+      id: "streets-label",
+      type: "symbol",
+      source: SRC,
+      minzoom: STREET_LABEL_MINZOOM,
+      filter,
+      layout: {
+        ...layout,
+        // Același anchor ca halo-ul; fără astea coliziunea dintre cele două straturi ascunde literele.
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+      },
+      paint: {
+        "text-color": "#121412",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.4,
+        "text-halo-blur": 0,
+        "text-opacity": 1,
+      },
+    });
+  } else {
+    map.setFilter("streets-label", filter);
+  }
 }
 
 function addBuildingLayers(map: Map) {

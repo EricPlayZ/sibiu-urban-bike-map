@@ -120,6 +120,8 @@ export function applySearchDim(map: Map, hit: SearchHit | null) {
   }
   setPaint(map, "streets-halo", "line-opacity", streetOpacity(0.4));
   setPaint(map, "streets-edit", "line-opacity", streetOpacity(1));
+  setPaint(map, "streets-label", "text-opacity", streetOpacity(1));
+  setPaint(map, "streets-label-halo", "text-opacity", streetOpacity(1));
 
   const nbFill = !dimOn ? nbFillFull : nbKeep.length ? keepOrDim(nbFillFull, nbKeep, "slug", DIM_NB_FILL) : DIM_NB_FILL;
   const nbHalo = !dimOn ? nbHaloFull : nbKeep.length ? keepOrDim(nbHaloFull, nbKeep, "slug", DIM_NB_HALO) : DIM_NB_HALO;
@@ -136,6 +138,10 @@ export function applySearchDim(map: Map, hit: SearchHit | null) {
   for (const id of STREET_DIM_LAYERS) {
     if (!map.getLayer(id)) continue;
     setPaint(map, id, "line-opacity-transition", { duration: 0 });
+  }
+  for (const id of ["streets-label", "streets-label-halo"] as const) {
+    if (!map.getLayer(id)) continue;
+    setPaint(map, id, "text-opacity-transition", { duration: 0 });
   }
 }
 
