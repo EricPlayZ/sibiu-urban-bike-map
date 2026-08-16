@@ -6,7 +6,6 @@ import {
   deleteMeasurement,
   exportAll,
   loadBuildingTypes,
-  loadCustomNeighborhoods,
   loadMeasurements,
   loadRemovedSids,
   markRemovedSid,
@@ -15,19 +14,17 @@ import {
   purgeEmptyOrFlagOnlyMeasurements,
   purgeExcelSeedMeasurements,
   saveBuildingType,
-  saveCustomNeighborhoods,
   saveMeasurement,
   saveRemovedSids,
   unmarkRemovedSid,
 } from "./lib/store";
-import { applyLocalEditsToCollection, fetchCommittedLocalEdits, mergeWorkingEdits } from "./lib/localEdits";
+import { applyLocalEditsToCollection, fetchCommittedLocalEdits, mergeWorkingEdits, persistLocalEditsFile } from "./lib/localEdits";
 import { neighborhoodIsActive } from "./lib/geoAssign";
 import {
   featureHasReservedParking,
   hasAnyEdit,
   makeBuildingId,
   resolveStreetMeasurement,
-  slugify,
   streetHasBikeLane,
   streetHasDoorZoneBikeLane,
   streetHasIllegalParking,
@@ -58,8 +55,6 @@ type AppState = {
   editMode: boolean;
   /** streetsBase înainte de editare (pt. restaurare). */
   streetsBaseBeforeEdit: boolean | null;
-  drawing: boolean;
-  drawPoints: [number, number][];
   viewMode: ViewMode;
   layers: LayerVisibility;
   basemap: BasemapId;
@@ -128,10 +123,6 @@ type AppState = {
   purgeAllStreetEdits: () => void;
   openStreetEdit: (id: string) => void;
   setBuildingType: (id: string, type: string) => void;
-  startDraw: () => void;
-  addDrawPoint: (lng: number, lat: number) => void;
-  finishDraw: (name: string) => void;
-  cancelDraw: () => void;
   ensureBuildings: () => Promise<void>;
   paintedStreets: () => GeoJSON.FeatureCollection | null;
   paintedNeighborhoods: () => GeoJSON.FeatureCollection | null;
@@ -150,6 +141,7 @@ function syncWorkingStreets(
   selected: Selected;
 } {
   const measurements = mergeWorkingEdits(committed, loadMeasurements(), loadRemovedSids());
+  persistLocalEditsFile(measurements);
   const streets = pipeline ? applyLocalEditsToCollection(pipeline, measurements) : null;
   let nextSelected = selected;
   if (selected?.kind === "street" && streets) {
@@ -166,8 +158,6 @@ export const useApp = create<AppState>((set, get) => ({
   loadingMsg: "Pregătim harta…",
   editMode: false,
   streetsBaseBeforeEdit: null,
-  drawing: false,
-  drawPoints: [],
   viewMode: "space",
   layers: { ...VIEW_PRESETS.space },
   basemap: defaultBasemapForTheme(loadUiTheme()),
@@ -220,12 +210,12 @@ export const useApp = create<AppState>((set, get) => ({
     purgeEmptyOrFlagOnlyMeasurements();
 
     const measurements = mergeWorkingEdits(committedEdits, loadMeasurements(), loadRemovedSids());
+    persistLocalEditsFile(measurements);
     const streets = applyLocalEditsToCollection(pipelineStreets, measurements);
 
     const officialFeatures = (limits.features || []).filter((f) =>
       neighborhoodIsActive(f.properties as { dissolve?: unknown })
     );
-    const custom = loadCustomNeighborhoods();
     const neighborhoodList = officialFeatures
       .map((f) => {
         const p = f.properties as { slug?: string; denumire?: string; name?: string };
@@ -249,7 +239,7 @@ export const useApp = create<AppState>((set, get) => ({
       pipelineStreets,
       neighborhoods: {
         type: "FeatureCollection",
-        features: [...officialFeatures, ...(custom.features || [])],
+        features: officialFeatures,
       },
       measurements,
       committedEdits,
@@ -289,8 +279,6 @@ export const useApp = create<AppState>((set, get) => ({
     set({
       editMode: false,
       streetsBaseBeforeEdit: null,
-      drawing: false,
-      drawPoints: [],
       layers: {
         ...get().layers,
         streetsBase: restore == null ? get().layers.streetsBase : restore,
@@ -491,64 +479,6 @@ export const useApp = create<AppState>((set, get) => ({
     }
     set({ buildingTypes: types, buildings: buildings ? { ...buildings } : null });
     get().showToast(`Clădire: ${type}`);
-  },
-
-  startDraw: () => {
-    get().setEditMode(true);
-    set({ drawing: true, drawPoints: [] });
-  },
-  addDrawPoint: (lng, lat) => set({ drawPoints: [...get().drawPoints, [lng, lat]] }),
-  cancelDraw: () => set({ drawing: false, drawPoints: [] }),
-  finishDraw: (name) => {
-    const pts = get().drawPoints;
-    if (pts.length < 3) {
-      get().showToast("Minim 3 puncte");
-      return;
-    }
-    const slug = slugify(name);
-    const feature: GeoJSON.Feature = {
-      type: "Feature",
-      properties: { denumire: name, name, slug, source: "drawn" },
-      geometry: { type: "Polygon", coordinates: [[...pts, pts[0]]] },
-    };
-    const custom = loadCustomNeighborhoods();
-    const idx = custom.features.findIndex((f) => (f.properties as { slug?: string })?.slug === slug);
-    if (idx >= 0) custom.features[idx] = feature;
-    else custom.features.push(feature);
-    saveCustomNeighborhoods(custom);
-    const official = (get().neighborhoods?.features || []).filter((f) => (f.properties as { source?: string })?.source !== "drawn");
-    // keep only non-drawn from current + all custom
-    const base = official.filter((f) => !(f.properties as { source?: string })?.source);
-    set({
-      neighborhoods: { type: "FeatureCollection", features: [...base, ...custom.features] },
-      drawing: false,
-      drawPoints: [],
-      neighborhoodList: [
-        ...get().neighborhoodList.filter((n) => n.slug !== slug),
-        { slug, name },
-      ].sort((a, b) => a.name.localeCompare(b.name, "ro")),
-      filters: {
-        ...get().filters,
-        neighborhoods: get().filters.neighborhoods.includes(slug)
-          ? get().filters.neighborhoods
-          : [...get().filters.neighborhoods, slug],
-      },
-    });
-    // reload limits + custom properly
-    fetch("./neighborhood_limits.geojson")
-      .then((r) => r.json())
-      .then((limits: GeoJSON.FeatureCollection) => {
-        set({
-          neighborhoods: {
-            type: "FeatureCollection",
-            features: [
-              ...(limits.features || []).filter((f) => neighborhoodIsActive(f.properties as { dissolve?: unknown })),
-              ...loadCustomNeighborhoods().features,
-            ],
-          },
-        });
-      });
-    get().showToast(`Cartier salvat: ${name}`);
   },
 
   ensureBuildings: async () => {

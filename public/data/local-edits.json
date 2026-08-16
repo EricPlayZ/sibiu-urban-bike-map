@@ -1,4 +1,59 @@
 {
   "version": 1,
-  "edits": {}
+  "updated_at": "2026-08-16T20:47:57.966Z",
+  "edits": {
+    "st_dumbravii_dumbravii_24.13766_45.77058_1435": {
+      "street_id": "st_dumbravii_dumbravii_24.13766_45.77058_1435",
+      "source": "local",
+      "name": "Calea Dumbravii",
+      "neighborhood_slug": "dumbravii",
+      "row_width_m": 0,
+      "updated_at": "2026-08-16T19:31:03.998Z"
+    },
+    "st_hipodrom_dumbravii_24.14725_45.78195_2248": {
+      "street_id": "st_hipodrom_dumbravii_24.14725_45.78195_2248",
+      "source": "local",
+      "name": "Calea Dumbrăvii",
+      "neighborhood_slug": "hipodrom",
+      "bike1_m": 2.5,
+      "bike2_m": 2.5,
+      "updated_at": "2026-08-16T19:31:14.509Z"
+    },
+    "st_hipodrom_dumbravii_24.14780_45.78271_2249": {
+      "street_id": "st_hipodrom_dumbravii_24.14780_45.78271_2249",
+      "source": "local",
+      "name": "Calea Dumbrăvii",
+      "neighborhood_slug": "hipodrom",
+      "bike1_m": 2.5,
+      "bike2_m": 2.5,
+      "updated_at": "2026-08-16T19:31:18.036Z"
+    },
+    "st_hipodrom_dumbravii_24.14745_45.78220_471": {
+      "street_id": "st_hipodrom_dumbravii_24.14745_45.78220_471",
+      "source": "local",
+      "name": "Calea Dumbrăvii",
+      "neighborhood_slug": "hipodrom",
+      "bike1_m": 2.5,
+      "bike2_m": 2.5,
+      "updated_at": "2026-08-16T19:31:22.975Z"
+    },
+    "st_valea_aurie_dumbravii_24.13277_45.76573_2567": {
+      "street_id": "st_valea_aurie_dumbravii_24.13277_45.76573_2567",
+      "source": "local",
+      "name": "Calea Dumbrăvii",
+      "neighborhood_slug": "valea_aurie",
+      "bike1_m": 2.5,
+      "bike2_m": 2.5,
+      "updated_at": "2026-08-16T19:31:38.720Z"
+    },
+    "st_valea_aurie_dumbravii_24.13260_45.76555_2566": {
+      "street_id": "st_valea_aurie_dumbravii_24.13260_45.76555_2566",
+      "source": "local",
+      "name": "Calea Dumbrăvii",
+      "neighborhood_slug": "valea_aurie",
+      "bike1_m": 2.5,
+      "bike2_m": 2.5,
+      "updated_at": "2026-08-16T19:31:45.501Z"
+    }
+  }
 }

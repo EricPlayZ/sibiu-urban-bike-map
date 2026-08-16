@@ -9,13 +9,11 @@ import {
   Map as MapIcon,
   Moon,
   Pencil,
-  Pentagon,
   Sun,
   ChartColumn,
   Monitor,
   GraduationCap,
   Bug,
-  X,
 } from "lucide-react";
 import { useApp } from "../store";
 import { SearchControl } from "./SearchControl";
@@ -44,9 +42,6 @@ export function TopBar() {
   const importReportOpen = useApp((s) => s.importReportOpen);
   const importReport = useApp((s) => s.importReport);
   const measurements = useApp((s) => s.measurements);
-  const startDraw = useApp((s) => s.startDraw);
-  const cancelDraw = useApp((s) => s.cancelDraw);
-  const drawing = useApp((s) => s.drawing);
   const doExport = useApp((s) => s.doExport);
   const basemap = useApp((s) => s.basemap);
   const setBasemap = useApp((s) => s.setBasemap);
@@ -126,15 +121,10 @@ export function TopBar() {
       <AnimatePresence>
         {editMode && (
           <motion.div className="edit-rail" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-            <button type="button" className={drawing ? "on" : ""} onClick={() => (drawing ? cancelDraw() : startDraw())}>
-              {drawing ? <X size={16} /> : <Pentagon size={16} />}
-              {drawing ? "Anulează desen" : "Desenează cartier"}
-            </button>
             <button type="button" onClick={doExport}>
               <Download size={16} />
               Export JSON
             </button>
-            {drawing && <span className="pulse-hint">Click colțuri · dublu-click = gata</span>}
           </motion.div>
         )}
       </AnimatePresence>

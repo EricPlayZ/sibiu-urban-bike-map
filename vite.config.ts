@@ -44,8 +44,36 @@ function measurementsManifestPlugin(): Plugin {
   };
 }
 
+function localEditsWritePlugin(): Plugin {
+  const file = path.resolve(root, "public/data/local-edits.json");
+  return {
+    name: "local-edits-write",
+    configureServer(server) {
+      server.middlewares.use("/__ubr/local-edits", (req, res, next) => {
+        if (req.method !== "POST") return next();
+        const chunks: Buffer[] = [];
+        req.on("data", (c) => chunks.push(c));
+        req.on("end", () => {
+          try {
+            const raw = Buffer.concat(chunks).toString("utf8");
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== "object") throw new Error("bad json");
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, JSON.stringify(parsed, null, 2) + "\n");
+            res.statusCode = 204;
+            res.end();
+          } catch {
+            res.statusCode = 400;
+            res.end("invalid");
+          }
+        });
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), measurementsManifestPlugin()],
+  plugins: [react(), measurementsManifestPlugin(), localEditsWritePlugin()],
   base: "./",
   server: { port: 5500, host: true },
 });

@@ -21,7 +21,6 @@ import { hitAnchor, hitPrimaryFeature, type SearchHit } from "../lib/mapSearch";
 
 const SRC = "streets";
 const NB = "nb";
-const DRAW = "draw";
 const BLD = "bld";
 
 const STREET_HIT_LAYERS = [
@@ -73,15 +72,10 @@ export function MapView() {
   const neighborhoods = useApp((s) => s.neighborhoods);
   const measurements = useApp((s) => s.measurements);
   const filters = useApp((s) => s.filters);
-  const drawing = useApp((s) => s.drawing);
-  const drawPoints = useApp((s) => s.drawPoints);
   const buildings = useApp((s) => s.buildings);
   const selectStreet = useApp((s) => s.selectStreet);
   const selectBuilding = useApp((s) => s.selectBuilding);
-  const addDrawPoint = useApp((s) => s.addDrawPoint);
-  const finishDraw = useApp((s) => s.finishDraw);
   const ensureBuildings = useApp((s) => s.ensureBuildings);
-  const showToast = useApp((s) => s.showToast);
   const schools = useApp((s) => s.schools);
   const layers = useApp((s) => s.layers);
   const editMode = useApp((s) => s.editMode);
@@ -225,7 +219,7 @@ export function MapView() {
     if (!map || !ready || !map.getSource(SRC)) return;
     pushData(map);
     applyLayerVisibility(map);
-  }, [ready, measurements, filters, viewMode, layers, neighborhoods, drawPoints, buildings, schools, editMode]);
+  }, [ready, measurements, filters, viewMode, layers, neighborhoods, buildings, schools, editMode]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -300,10 +294,6 @@ export function MapView() {
 
     const onClick = (e: maplibregl.MapMouseEvent) => {
       const st = useApp.getState();
-      if (st.drawing) {
-        addDrawPoint(e.lngLat.lng, e.lngLat.lat);
-        return;
-      }
       if (st.layers.buildings && map.getLayer(BLD + "-fill")) {
         const bhits = map.queryRenderedFeatures(e.point, { layers: [BLD + "-fill"] });
         if (bhits[0]) {
@@ -371,44 +361,18 @@ export function MapView() {
     };
 
     const onMove = (e: maplibregl.MapMouseEvent) => {
-      if (useApp.getState().drawing) {
-        map.getCanvas().style.cursor = "crosshair";
-        return;
-      }
       const layers = [...STREET_HIT_LAYERS, BLD + "-fill"].filter((id) => map.getLayer(id));
       const hits = map.queryRenderedFeatures(e.point, { layers });
       map.getCanvas().style.cursor = hits.length ? "pointer" : "";
     };
 
-    const onDbl = (e: maplibregl.MapMouseEvent & { preventDefault: () => void }) => {
-      if (!useApp.getState().drawing) return;
-      e.preventDefault();
-      const name = prompt("Numele cartierului:");
-      if (!name) {
-        useApp.getState().cancelDraw();
-        return;
-      }
-      finishDraw(name.trim());
-    };
-
     map.on("click", onClick);
     map.on("mousemove", onMove);
-    map.on("dblclick", onDbl);
     return () => {
       map.off("click", onClick);
       map.off("mousemove", onMove);
-      map.off("dblclick", onDbl);
     };
-  }, [ready, addDrawPoint, selectStreet, selectBuilding, finishDraw]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    if (drawing) {
-      map.doubleClickZoom.disable();
-      showToast("Click pe colțuri · dublu-click închide");
-    } else map.doubleClickZoom.enable();
-  }, [drawing, showToast]);
+  }, [ready, selectStreet, selectBuilding]);
 
   // La editare, închide popup-ul de pe hartă (editarea folosește panoul)
   useEffect(() => {
@@ -458,21 +422,6 @@ function pushData(map: Map) {
   if (fc && map.getSource(SRC)) (map.getSource(SRC) as GeoJSONSource).setData(fc);
   const nb = useApp.getState().paintedNeighborhoods();
   if (nb && map.getSource(NB)) (map.getSource(NB) as GeoJSONSource).setData(nb);
-  const pts = useApp.getState().drawPoints;
-  if (map.getSource(DRAW)) {
-    const features: GeoJSON.Feature[] = [];
-    if (pts.length) {
-      features.push({
-        type: "Feature",
-        properties: {},
-        geometry: { type: "LineString", coordinates: pts.length === 1 ? [pts[0], pts[0]] : pts },
-      });
-      for (const p of pts) {
-        features.push({ type: "Feature", properties: { kind: "pt" }, geometry: { type: "Point", coordinates: p } });
-      }
-    }
-    (map.getSource(DRAW) as GeoJSONSource).setData({ type: "FeatureCollection", features });
-  }
 }
 
 function applyNeighborhoodStyle(map: Map) {
@@ -546,8 +495,6 @@ function ensureOverlayOrder(map: Map) {
     "nb-halo",
     "nb-line",
     ...searchGlowOverlayLayerIds(),
-    "draw-line",
-    "draw-pts",
   ];
   for (const id of bottomToTop) {
     if (map.getLayer(id)) {
@@ -567,7 +514,6 @@ function lineWidthExpr(base: number): maplibregl.ExpressionSpecification {
 function addSourcesAndLayers(map: Map) {
   if (!map.getSource(SRC)) map.addSource(SRC, { type: "geojson", data: empty(), tolerance: 0.4 });
   if (!map.getSource(NB)) map.addSource(NB, { type: "geojson", data: empty(), tolerance: 0.75 });
-  if (!map.getSource(DRAW)) map.addSource(DRAW, { type: "geojson", data: empty() });
   addSearchHighlightLayers(map);
 
   if (!map.getLayer("nb-fill")) {
@@ -693,16 +639,6 @@ function addSourcesAndLayers(map: Map) {
   } else {
     map.setPaintProperty("streets-edit", "line-offset", ["coalesce", ["get", "off_edit"], 0]);
     map.setPaintProperty("streets-edit", "line-width", lineWidthExpr(6));
-  }
-  if (!map.getLayer("draw-line")) {
-    map.addLayer({ id: "draw-line", type: "line", source: DRAW, paint: { "line-color": "#ff6a00", "line-width": 3 } });
-    map.addLayer({
-      id: "draw-pts",
-      type: "circle",
-      source: DRAW,
-      filter: ["==", ["get", "kind"], "pt"],
-      paint: { "circle-color": "#ff6a00", "circle-radius": 5, "circle-stroke-width": 2, "circle-stroke-color": "#fff" },
-    });
   }
 
   ensureOverlayOrder(map);

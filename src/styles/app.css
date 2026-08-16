@@ -382,24 +382,6 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
   color: #fff;
   border-color: #ff6a00;
 }
-.pulse-hint {
-  background: #ff6a00;
-  color: #fff;
-  padding: 8px 12px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
-  animation: pulse 1.4s ease-in-out infinite;
-}
-@keyframes pulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.03);
-  }
-}
 
 .popover {
   position: absolute;

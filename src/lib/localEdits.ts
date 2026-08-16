@@ -174,3 +174,15 @@ export async function fetchCommittedLocalEdits(): Promise<Record<string, Measure
     return {};
   }
 }
+
+/** În `npm run dev`, scrie setul de lucru pe disk. Production: no-op. */
+export function persistLocalEditsFile(edits: Record<string, Measurement>): void {
+  if (!import.meta.env.DEV) return;
+  void fetch("/__ubr/local-edits", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: serializeLocalEditsFile(edits),
+  }).catch(() => {
+    /* silent */
+  });
+}
