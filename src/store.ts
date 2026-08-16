@@ -255,7 +255,6 @@ export const useApp = create<AppState>((set, get) => ({
       committedEdits,
       seedMeasurements: imported.csvMeasurements,
       importReport: imported.report,
-      importReportOpen: true,
       statsOpen: true,
       buildingTypes: loadBuildingTypes(),
       schools,
