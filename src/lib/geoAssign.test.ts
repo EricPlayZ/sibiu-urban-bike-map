@@ -7,6 +7,9 @@ import {
   clipStreetToNeighborhoods,
   geometryLineStrings,
   neighborhoodIsActive,
+  neighborhoodLabelCollection,
+  pointInPolygon,
+  polygonLabelPoint,
   shouldKeepUncut,
   uncutOwner,
   type NeighborhoodPoly,
@@ -156,6 +159,43 @@ describe("uncut vs real Sibiu streets", () => {
     for (const f of fullyOutside) {
       const outside = geometryLineStrings(f.geometry).flatMap((line) => clipLineOutsideNeighborhoods(line, polys));
       expect(shouldKeepUncut(f.geometry, [], outside.length > 0, hipodromOnly)).toBeNull();
+    }
+  });
+});
+
+describe("neighborhood labels", () => {
+  it("puts a square label at the centroid", () => {
+    const geom: GeoJSON.Polygon = {
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [2, 0],
+          [2, 2],
+          [0, 2],
+          [0, 0],
+        ],
+      ],
+    };
+    expect(polygonLabelPoint(geom)).toEqual([1, 1]);
+  });
+
+  it("places a label inside every active neighborhood", () => {
+    const fc = loadJson<GeoJSON.FeatureCollection>("public/neighborhood_limits.geojson");
+    const official = fc.features.filter((f) => neighborhoodIsActive(f.properties as { dissolve?: unknown }));
+    const labels = neighborhoodLabelCollection({ type: "FeatureCollection", features: official });
+    expect(labels.features.length).toBe(official.length);
+
+    const bySlug = new Map(
+      official.map((f) => [String((f.properties as { slug?: string })?.slug || ""), f])
+    );
+    for (const f of labels.features) {
+      const slug = String((f.properties as { slug?: string })?.slug || "");
+      const src = bySlug.get(slug);
+      expect(src, slug).toBeTruthy();
+      const pt = (f.geometry as GeoJSON.Point).coordinates as [number, number];
+      expect(pointInPolygon(pt, src!.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon), slug).toBe(true);
+      expect(String((f.properties as { label?: string })?.label || "")).toBeTruthy();
     }
   });
 });

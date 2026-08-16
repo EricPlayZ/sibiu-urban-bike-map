@@ -115,6 +115,133 @@ function polygonArea(geom: GeoJSON.Polygon | GeoJSON.MultiPolygon) {
   }, 0);
 }
 
+function largestPolygonPart(geom: GeoJSON.Polygon | GeoJSON.MultiPolygon): GeoJSON.Position[][] {
+  if (geom.type === "Polygon") return geom.coordinates;
+  let best = geom.coordinates[0];
+  let bestA = -1;
+  for (const poly of geom.coordinates) {
+    const a = ringArea(poly[0] || []);
+    if (a > bestA) {
+      bestA = a;
+      best = poly;
+    }
+  }
+  return best;
+}
+
+function ringCentroid(ring: number[][]): LngLat {
+  let twiceA = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const x0 = ring[j][0];
+    const y0 = ring[j][1];
+    const x1 = ring[i][0];
+    const y1 = ring[i][1];
+    const cross = x0 * y1 - x1 * y0;
+    twiceA += cross;
+    cx += (x0 + x1) * cross;
+    cy += (y0 + y1) * cross;
+  }
+  if (Math.abs(twiceA) < 1e-18) {
+    let sx = 0;
+    let sy = 0;
+    let n = 0;
+    for (const p of ring) {
+      if (n && p[0] === ring[0][0] && p[1] === ring[0][1]) continue;
+      sx += p[0];
+      sy += p[1];
+      n++;
+    }
+    return n ? [sx / n, sy / n] : [ring[0][0], ring[0][1]];
+  }
+  return [cx / (3 * twiceA), cy / (3 * twiceA)];
+}
+
+function dist2ToSeg(pt: LngLat, a: number[], b: number[]) {
+  const abx = b[0] - a[0];
+  const aby = b[1] - a[1];
+  const apx = pt[0] - a[0];
+  const apy = pt[1] - a[1];
+  const ab2 = abx * abx + aby * aby;
+  const t = ab2 < 1e-18 ? 0 : Math.max(0, Math.min(1, (apx * abx + apy * aby) / ab2));
+  const dx = apx - t * abx;
+  const dy = apy - t * aby;
+  return dx * dx + dy * dy;
+}
+
+function minDist2ToRing(pt: LngLat, ring: number[][]) {
+  let best = Infinity;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    best = Math.min(best, dist2ToSeg(pt, ring[j], ring[i]));
+  }
+  return best;
+}
+
+/** Punct de etichetă în interiorul poligonului (centroid, altfel eșantion pe grilă). */
+export function polygonLabelPoint(geom: GeoJSON.Polygon | GeoJSON.MultiPolygon): LngLat | null {
+  const part = largestPolygonPart(geom);
+  const outer = part[0];
+  if (!outer || outer.length < 3) return null;
+  const poly: GeoJSON.Polygon = { type: "Polygon", coordinates: part };
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of outer) {
+    minX = Math.min(minX, p[0]);
+    minY = Math.min(minY, p[1]);
+    maxX = Math.max(maxX, p[0]);
+    maxY = Math.max(maxY, p[1]);
+  }
+
+  const candidates: LngLat[] = [ringCentroid(outer), [(minX + maxX) / 2, (minY + maxY) / 2]];
+  for (const pt of candidates) {
+    if (pointInPolygon(pt, poly)) return pt;
+  }
+
+  let bestPt: LngLat | null = null;
+  let bestD = -1;
+  const steps = 9;
+  for (let i = 1; i < steps; i++) {
+    for (let j = 1; j < steps; j++) {
+      const pt: LngLat = [minX + ((maxX - minX) * i) / steps, minY + ((maxY - minY) * j) / steps];
+      if (!pointInPolygon(pt, poly)) continue;
+      const d = minDist2ToRing(pt, outer);
+      if (d > bestD) {
+        bestD = d;
+        bestPt = pt;
+      }
+    }
+  }
+  return bestPt;
+}
+
+/** Puncte GeoJSON pentru numele cartierelor (un label per poligon). */
+export function neighborhoodLabelCollection(nb: GeoJSON.FeatureCollection): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+  for (const f of nb.features) {
+    const geom = f.geometry;
+    if (!geom || (geom.type !== "Polygon" && geom.type !== "MultiPolygon")) continue;
+    const p = (f.properties || {}) as { slug?: string; denumire?: string; name?: string };
+    const name = String(p.denumire || p.name || p.slug || "").trim();
+    if (!name) continue;
+    const coordinates = polygonLabelPoint(geom);
+    if (!coordinates) continue;
+    features.push({
+      type: "Feature",
+      properties: {
+        slug: String(p.slug || ""),
+        label: name.toLocaleUpperCase("ro"),
+        area: polygonArea(geom),
+      },
+      geometry: { type: "Point", coordinates },
+    });
+  }
+  return { type: "FeatureCollection", features };
+}
+
 function pieceSample(coords: LngLat[]): LngLat {
   if (coords.length >= 2) {
     const i = Math.max(1, Math.floor(coords.length / 2));

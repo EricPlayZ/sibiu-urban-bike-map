@@ -17,10 +17,12 @@ import {
   searchGlowOverlayLayerIds,
   stopSearchGlow,
 } from "../lib/searchHighlight";
+import { neighborhoodLabelCollection } from "../lib/geoAssign";
 import { hitAnchor, hitPrimaryFeature, type SearchHit } from "../lib/mapSearch";
 
 const SRC = "streets";
 const NB = "nb";
+const NB_LABELS = "nb-labels";
 const BLD = "bld";
 
 const STREET_HIT_LAYERS = [
@@ -422,6 +424,9 @@ function pushData(map: Map) {
   if (fc && map.getSource(SRC)) (map.getSource(SRC) as GeoJSONSource).setData(fc);
   const nb = useApp.getState().paintedNeighborhoods();
   if (nb && map.getSource(NB)) (map.getSource(NB) as GeoJSONSource).setData(nb);
+  if (nb && map.getSource(NB_LABELS)) {
+    (map.getSource(NB_LABELS) as GeoJSONSource).setData(neighborhoodLabelCollection(nb));
+  }
 }
 
 function applyNeighborhoodStyle(map: Map) {
@@ -436,6 +441,11 @@ function applyNeighborhoodStyle(map: Map) {
     map.setPaintProperty("nb-line", "line-color", "#8dffc4");
     map.setPaintProperty("nb-line", "line-opacity", 1);
     map.setPaintProperty("nb-line", "line-width", 3);
+    if (map.getLayer("nb-label")) {
+      map.setPaintProperty("nb-label", "text-color", "#eafff4");
+      map.setPaintProperty("nb-label", "text-halo-color", "#06140c");
+      map.setPaintProperty("nb-label", "text-halo-width", 1.6);
+    }
   } else {
     map.setPaintProperty("nb-fill", "fill-color", "#0f7a4c");
     map.setPaintProperty("nb-fill", "fill-opacity", 0.07);
@@ -445,6 +455,11 @@ function applyNeighborhoodStyle(map: Map) {
     map.setPaintProperty("nb-line", "line-color", "#0a5c39");
     map.setPaintProperty("nb-line", "line-opacity", 1);
     map.setPaintProperty("nb-line", "line-width", 3);
+    if (map.getLayer("nb-label")) {
+      map.setPaintProperty("nb-label", "text-color", "#0a3d28");
+      map.setPaintProperty("nb-label", "text-halo-color", "#f7fff9");
+      map.setPaintProperty("nb-label", "text-halo-width", 1.8);
+    }
   }
   applySearchDim(map, useApp.getState().searchFocus?.hit ?? null);
 }
@@ -466,6 +481,7 @@ function applyLayerVisibility(map: Map) {
   setVis(map, "nb-fill", layers.neighborhoods);
   setVis(map, "nb-halo", layers.neighborhoods);
   setVis(map, "nb-line", layers.neighborhoods);
+  setVis(map, "nb-label", layers.neighborhoods);
 
   if (map.getLayer("streets-base")) {
     map.setPaintProperty("streets-base", "line-opacity", layers.buildings && !layers.bike ? 0.28 : 0.55);
@@ -494,6 +510,7 @@ function ensureOverlayOrder(map: Map) {
     BLD + "-line",
     "nb-halo",
     "nb-line",
+    "nb-label",
     ...searchGlowOverlayLayerIds(),
   ];
   for (const id of bottomToTop) {
@@ -514,6 +531,7 @@ function lineWidthExpr(base: number): maplibregl.ExpressionSpecification {
 function addSourcesAndLayers(map: Map) {
   if (!map.getSource(SRC)) map.addSource(SRC, { type: "geojson", data: empty(), tolerance: 0.4 });
   if (!map.getSource(NB)) map.addSource(NB, { type: "geojson", data: empty(), tolerance: 0.75 });
+  if (!map.getSource(NB_LABELS)) map.addSource(NB_LABELS, { type: "geojson", data: empty() });
   addSearchHighlightLayers(map);
 
   if (!map.getLayer("nb-fill")) {
@@ -545,6 +563,50 @@ function addSourcesAndLayers(map: Map) {
         "line-dasharray": [1.2, 1.1],
       },
       layout: { "line-cap": "round", "line-join": "round" },
+    });
+  }
+  if (!map.getLayer("nb-label")) {
+    map.addLayer({
+      id: "nb-label",
+      type: "symbol",
+      source: NB_LABELS,
+      minzoom: 11.2,
+      layout: {
+        "text-field": ["get", "label"],
+        "text-font": ["Noto Sans Bold"],
+        "text-size": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          12,
+          11,
+          13.8,
+          13,
+          15.5,
+          15.5,
+          17.5,
+          18,
+        ],
+        "text-max-width": 8,
+        "text-line-height": 1.1,
+        "text-letter-spacing": 0.04,
+        "text-anchor": "center",
+        "text-justify": "center",
+        "text-padding": 2,
+        "text-optional": false,
+        "symbol-sort-key": ["-", ["get", "area"]],
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-pitch-alignment": "viewport",
+        "text-rotation-alignment": "viewport",
+      },
+      paint: {
+        "text-color": "#0a3d28",
+        "text-halo-color": "#f7fff9",
+        "text-halo-width": 1.8,
+        "text-halo-blur": 0.2,
+        "text-opacity": 0.96,
+      },
     });
   }
   applyNeighborhoodStyle(map);

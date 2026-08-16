@@ -32,6 +32,7 @@ const DIM_STREET = 0.18;
 const DIM_NB_FILL = 0.025;
 const DIM_NB_HALO = 0.18;
 const DIM_NB_LINE = 0.22;
+const DIM_NB_LABEL = 0.16;
 const DIM_BLD_FILL = 0.16;
 const DIM_BLD_LINE = 0.1;
 const GLOW_PEAK = 0.92;
@@ -123,9 +124,11 @@ export function applySearchDim(map: Map, hit: SearchHit | null) {
   const nbFill = !dimOn ? nbFillFull : nbKeep.length ? keepOrDim(nbFillFull, nbKeep, "slug", DIM_NB_FILL) : DIM_NB_FILL;
   const nbHalo = !dimOn ? nbHaloFull : nbKeep.length ? keepOrDim(nbHaloFull, nbKeep, "slug", DIM_NB_HALO) : DIM_NB_HALO;
   const nbLine = !dimOn ? 1 : nbKeep.length ? keepOrDim(1, nbKeep, "slug", DIM_NB_LINE) : DIM_NB_LINE;
+  const nbLabel = !dimOn ? 0.96 : nbKeep.length ? keepOrDim(0.96, nbKeep, "slug", DIM_NB_LABEL) : DIM_NB_LABEL;
   setPaint(map, "nb-fill", "fill-opacity", nbFill);
   setPaint(map, "nb-halo", "line-opacity", nbHalo);
   setPaint(map, "nb-line", "line-opacity", nbLine);
+  setPaint(map, "nb-label", "text-opacity", nbLabel);
 
   setPaint(map, "bld-fill", "fill-opacity", dimOn ? DIM_BLD_FILL : 0.58);
   setPaint(map, "bld-line", "line-opacity", dimOn ? DIM_BLD_LINE : 0.35);

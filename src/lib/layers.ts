@@ -28,7 +28,7 @@ export const LAYER_META: { id: MapLayerId; label: string; hint: string }[] = [
   { id: "schoolAssign", label: "Arondare școli", hint: "Străzi arondate unei școli" },
   { id: "schoolMarkers", label: "Markere școli", hint: "Pin-urile pe hartă" },
   { id: "buildings", label: "Clădiri", hint: "Poligoane tip casă / bloc" },
-  { id: "neighborhoods", label: "Contur cartiere", hint: "Limitele de cartier" },
+  { id: "neighborhoods", label: "Contur cartiere", hint: "Limitele și numele de cartier" },
 ];
 
 export const VIEW_PRESETS: Record<ViewMode, LayerVisibility> = {

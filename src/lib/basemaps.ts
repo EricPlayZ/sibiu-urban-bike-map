@@ -1,11 +1,15 @@
 import type { StyleSpecification } from "maplibre-gl";
 import type { BasemapId } from "./space";
 
+/** Glyphs MapLibre — necesare pentru etichetele de cartier pe stilurile raster. */
+const GLYPHS = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
+
 export const BASEMAPS: Record<BasemapId, { label: string; style: string | StyleSpecification }> = {
   light: {
     label: "Deschis",
     style: {
       version: 8,
+      glyphs: GLYPHS,
       sources: {
         carto: {
           type: "raster",
@@ -24,6 +28,7 @@ export const BASEMAPS: Record<BasemapId, { label: string; style: string | StyleS
     label: "Întunecat",
     style: {
       version: 8,
+      glyphs: GLYPHS,
       sources: {
         carto: {
           type: "raster",
@@ -42,6 +47,7 @@ export const BASEMAPS: Record<BasemapId, { label: string; style: string | StyleS
     label: "Satelit",
     style: {
       version: 8,
+      glyphs: GLYPHS,
       sources: {
         esri: {
           type: "raster",
