@@ -3,7 +3,7 @@ name: Deploy mapthecity
 on:
   push:
     branches:
-      - feat/react-vite-rewrite
+      - feat/csv-osm-import
   workflow_dispatch:
 
 concurrency:

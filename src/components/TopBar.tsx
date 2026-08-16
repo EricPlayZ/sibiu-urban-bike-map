@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { useApp } from "../store";
+import { SearchControl } from "./SearchControl";
 import { BASEMAPS } from "../lib/basemaps";
 import type { BasemapId } from "../lib/space";
 import { hasAnyEdit } from "../lib/space";
@@ -52,6 +53,10 @@ export function TopBar() {
   const uiTheme = useApp((s) => s.uiTheme);
   const setUiTheme = useApp((s) => s.setUiTheme);
   const editsCount = Object.values(measurements).filter(hasAnyEdit).length;
+  const importErrorCount = importReport ? importReport.issues.filter((i) => i.severity === "error").length : 0;
+  const importLabel = importErrorCount > 0 ? `Import (${importErrorCount})` : "Import";
+  const editsLabel = editsCount > 0 ? `Editări (${editsCount})` : "Editări";
+  const editLabel = editMode ? "Editare ON" : "Editare";
 
   return (
     <>
@@ -69,6 +74,8 @@ export function TopBar() {
           </div>
         </div>
 
+        <SearchControl />
+
         <div className="seg" role="group" aria-label="Mod vizualizare">
           <button type="button" className={layersMatchPreset(layers, "space", editMode ? { ignore: ["streetsBase"] } : undefined) ? "on" : ""} onClick={() => setViewMode("space")}>
             <Bike size={16} strokeWidth={2.25} aria-hidden />
@@ -85,33 +92,33 @@ export function TopBar() {
         </div>
 
         <div className="top-actions">
-          <button type="button" className={`chip-btn ${filtersOpen ? "on" : ""}`} onClick={toggleFilters} aria-pressed={filtersOpen}>
+          <button type="button" className={`chip-btn ${filtersOpen ? "on" : ""}`} onClick={toggleFilters} title="Filtre" aria-label="Filtre" aria-pressed={filtersOpen}>
             <Filter size={16} strokeWidth={2.25} aria-hidden />
-            Filtre
+            <span className="chip-label" aria-hidden>Filtre</span>
           </button>
-          <button type="button" className={`chip-btn ${basemapOpen ? "on" : ""}`} onClick={toggleBasemap} aria-pressed={basemapOpen}>
+          <button type="button" className={`chip-btn ${basemapOpen ? "on" : ""}`} onClick={toggleBasemap} title="Hartă" aria-label="Hartă" aria-pressed={basemapOpen}>
             <Layers size={16} strokeWidth={2.25} aria-hidden />
-            Hartă
+            <span className="chip-label" aria-hidden>Hartă</span>
           </button>
-          <button type="button" className={`chip-btn ${themeOpen ? "on" : ""}`} onClick={toggleTheme} title="Temă interfață" aria-pressed={themeOpen}>
+          <button type="button" className={`chip-btn ${themeOpen ? "on" : ""}`} onClick={toggleTheme} title="Temă" aria-label="Temă" aria-pressed={themeOpen}>
             {uiTheme === "dark" ? <Moon size={16} /> : uiTheme === "light" ? <Sun size={16} /> : <Monitor size={16} />}
-            Temă
+            <span className="chip-label" aria-hidden>Temă</span>
           </button>
-          <button type="button" className={`chip-btn ${statsOpen ? "on" : ""}`} onClick={toggleStats} aria-pressed={statsOpen}>
+          <button type="button" className={`chip-btn ${statsOpen ? "on" : ""}`} onClick={toggleStats} title="Stats" aria-label="Stats" aria-pressed={statsOpen}>
             <ChartColumn size={16} strokeWidth={2.25} aria-hidden />
-            Stats
+            <span className="chip-label" aria-hidden>Stats</span>
           </button>
-          <button type="button" className={`chip-btn ${importReportOpen ? "on" : ""}`} onClick={toggleImportReport} aria-pressed={importReportOpen}>
+          <button type="button" className={`chip-btn ${importReportOpen ? "on" : ""}`} onClick={toggleImportReport} title={importLabel} aria-label={importLabel} aria-pressed={importReportOpen}>
             <Bug size={16} strokeWidth={2.25} aria-hidden />
-            Import{importReport ? ` (${importReport.issues.filter((i) => i.severity === "error").length})` : ""}
+            <span className="chip-label" aria-hidden>{importLabel}</span>
           </button>
-          <button type="button" className={`chip-btn ${editsOpen ? "on" : ""}`} onClick={toggleEdits} aria-pressed={editsOpen}>
+          <button type="button" className={`chip-btn ${editsOpen ? "on" : ""}`} onClick={toggleEdits} title={editsLabel} aria-label={editsLabel} aria-pressed={editsOpen}>
             <ListTree size={16} strokeWidth={2.25} aria-hidden />
-            Editări{editsCount > 0 ? ` (${editsCount})` : ""}
+            <span className="chip-label" aria-hidden>{editsLabel}</span>
           </button>
-          <button type="button" className={`chip-btn edit ${editMode ? "on" : ""}`} onClick={() => setEditMode(!editMode)}>
+          <button type="button" className={`chip-btn edit ${editMode ? "on" : ""}`} onClick={() => setEditMode(!editMode)} title={editLabel} aria-label={editLabel} aria-pressed={editMode}>
             <Pencil size={16} strokeWidth={2.25} aria-hidden />
-            {editMode ? "Editare ON" : "Editare"}
+            <span className="chip-label" aria-hidden>{editLabel}</span>
           </button>
         </div>
       </motion.header>

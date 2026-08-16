@@ -6,7 +6,18 @@ import { BASEMAPS } from "../lib/basemaps";
 import { CompassDialControl } from "../lib/northControl";
 import { enableChasingWheelZoom } from "../lib/chasingWheelZoom";
 import { LAYER_COLORS, type BasemapId } from "../lib/space";
-import { buildingPopupHtml, schoolMarkerHtml, schoolPopupHtml, streetPopupHtml } from "../lib/streetPopup";
+import { buildingPopupHtml, neighborhoodPopupHtml, schoolMarkerHtml, schoolPopupHtml, streetPopupHtml } from "../lib/streetPopup";
+import {
+  addSearchHighlightLayers,
+  applySearchDim,
+  clearSearchHighlight,
+  flyToSearchHit,
+  restoreSearchHighlight,
+  searchGlowFillLayerIds,
+  searchGlowOverlayLayerIds,
+  stopSearchGlow,
+} from "../lib/searchHighlight";
+import { hitAnchor, hitPrimaryFeature, type SearchHit } from "../lib/mapSearch";
 
 const SRC = "streets";
 const NB = "nb";
@@ -74,12 +85,64 @@ export function MapView() {
   const schools = useApp((s) => s.schools);
   const layers = useApp((s) => s.layers);
   const editMode = useApp((s) => s.editMode);
+  const searchFocus = useApp((s) => s.searchFocus);
   const schoolMarkersRef = useRef<Marker[]>([]);
   const streetPopupRef = useRef<Popup | null>(null);
+  const skipPopupCloseRef = useRef(false);
+
+  const dismissSearchHighlight = () => {
+    const map = mapRef.current;
+    if (useApp.getState().searchFocus) useApp.getState().clearSearchFocus();
+    if (map?.getSource("search-hl")) clearSearchHighlight(map);
+  };
 
   const clearStreetPopup = () => {
+    skipPopupCloseRef.current = true;
     streetPopupRef.current?.remove();
     streetPopupRef.current = null;
+    skipPopupCloseRef.current = false;
+  };
+
+  const bindPopupClose = (popup: Popup) => {
+    popup.on("close", () => {
+      if (streetPopupRef.current === popup) streetPopupRef.current = null;
+      if (skipPopupCloseRef.current) return;
+      dismissSearchHighlight();
+    });
+  };
+
+  const showSearchPopup = (map: Map, hit: SearchHit) => {
+    const st = useApp.getState();
+    if (st.editMode) return;
+    const anchor = hitAnchor(hit);
+    if (!anchor) return;
+    st.closeSheet();
+    clearStreetPopup();
+
+    let html = "";
+    if (hit.kind === "street") {
+      const feat = hitPrimaryFeature(hit);
+      const p = ((feat?.properties || {}) as Record<string, unknown>);
+      const sid = String(p.sid || "");
+      html = streetPopupHtml(p, st.schools, st.measurementForStreet(sid, p));
+    } else if (hit.kind === "school") {
+      const feat = hit.features[0];
+      const selected = new Set(st.filters.neighborhoods);
+      html = schoolPopupHtml((feat?.properties || {}) as Record<string, unknown>, st.streets, selected);
+    } else {
+      html = neighborhoodPopupHtml(hit.label);
+    }
+
+    streetPopupRef.current = new maplibregl.Popup({
+      closeOnClick: true,
+      maxWidth: "320px",
+      offset: hit.kind === "school" ? 18 : 14,
+      className: "ubr-street-popup",
+    })
+      .setLngLat(anchor)
+      .setHTML(html)
+      .addTo(map);
+    bindPopupClose(streetPopupRef.current);
   };
 
   useEffect(() => {
@@ -114,6 +177,7 @@ export function MapView() {
     return () => {
       stopWheelZoom();
       cancel();
+      stopSearchGlow(map);
       streetPopupRef.current?.remove();
       streetPopupRef.current = null;
       map.remove();
@@ -196,6 +260,8 @@ export function MapView() {
       const el = document.createElement("button");
       el.type = "button";
       el.className = "school-marker";
+      const focusId = useApp.getState().searchFocus?.hit.id;
+      if (focusId === `school:${slug}`) el.classList.add("is-search-hit");
       el.title = name;
       el.setAttribute("aria-label", name);
       el.innerHTML = schoolMarkerHtml(name);
@@ -203,6 +269,7 @@ export function MapView() {
         ev.stopPropagation();
         const st = useApp.getState();
         clearStreetPopup();
+        dismissSearchHighlight();
         st.closeSheet();
         const selected = new Set(st.filters.neighborhoods);
         const html = schoolPopupHtml((f.properties || {}) as Record<string, unknown>, st.streets, selected);
@@ -215,6 +282,7 @@ export function MapView() {
           .setLngLat([lng, lat])
           .setHTML(html)
           .addTo(map);
+        bindPopupClose(streetPopupRef.current);
       });
       const marker = new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([lng, lat]).addTo(map);
       schoolMarkersRef.current.push(marker);
@@ -224,7 +292,7 @@ export function MapView() {
       schoolMarkersRef.current.forEach((m) => m.remove());
       schoolMarkersRef.current = [];
     };
-  }, [layers.schoolMarkers, schools, ready, basemap, filters]);
+  }, [layers.schoolMarkers, schools, ready, basemap, filters, searchFocus]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -237,7 +305,6 @@ export function MapView() {
         return;
       }
       if (st.layers.buildings && map.getLayer(BLD + "-fill")) {
-        clearStreetPopup();
         const bhits = map.queryRenderedFeatures(e.point, { layers: [BLD + "-fill"] });
         if (bhits[0]) {
           const p = bhits[0].properties || {};
@@ -245,6 +312,8 @@ export function MapView() {
           const btype = String(p.ubr_type || "necunoscut");
           if (!st.editMode) {
             st.closeSheet();
+            clearStreetPopup();
+            dismissSearchHighlight();
             const html = buildingPopupHtml(btype);
             streetPopupRef.current = new maplibregl.Popup({
               closeOnClick: true,
@@ -255,8 +324,11 @@ export function MapView() {
               .setLngLat(e.lngLat)
               .setHTML(html)
               .addTo(map);
+            bindPopupClose(streetPopupRef.current);
             return;
           }
+          clearStreetPopup();
+          dismissSearchHighlight();
           selectBuilding(bid, btype);
           return;
         }
@@ -265,6 +337,7 @@ export function MapView() {
       const hits = map.queryRenderedFeatures(e.point, { layers });
       if (!hits[0]) {
         clearStreetPopup();
+        dismissSearchHighlight();
         return;
       }
       const hitProps = (hits[0].properties || {}) as Record<string, unknown>;
@@ -277,6 +350,7 @@ export function MapView() {
       if (!st.editMode) {
         st.closeSheet();
         clearStreetPopup();
+        dismissSearchHighlight();
         const html = streetPopupHtml(p, st.schools, st.measurementForStreet(sid, p));
         streetPopupRef.current = new maplibregl.Popup({
           closeOnClick: true,
@@ -287,10 +361,12 @@ export function MapView() {
           .setLngLat(e.lngLat)
           .setHTML(html)
           .addTo(map);
+        bindPopupClose(streetPopupRef.current);
         return;
       }
 
       clearStreetPopup();
+      dismissSearchHighlight();
       selectStreet(sid, name, p);
     };
 
@@ -336,8 +412,29 @@ export function MapView() {
 
   // La editare, închide popup-ul de pe hartă (editarea folosește panoul)
   useEffect(() => {
-    if (editMode) clearStreetPopup();
+    if (editMode) {
+      clearStreetPopup();
+      dismissSearchHighlight();
+    }
   }, [editMode]);
+
+  useEffect(() => {
+    containerRef.current?.classList.toggle("is-search-focus", Boolean(searchFocus));
+  }, [searchFocus]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    if (!searchFocus) {
+      if (map.getSource("search-hl")) clearSearchHighlight(map);
+      return;
+    }
+    const run = () => {
+      flyToSearchHit(map, searchFocus.hit);
+      showSearchPopup(map, searchFocus.hit);
+    };
+    return whenStyleReady(map, run);
+  }, [searchFocus, ready]);
 
   return <div ref={containerRef} className="map-root" aria-label="Hartă Sibiu" />;
 }
@@ -349,6 +446,8 @@ function rebuildOverlays(map: Map) {
     pushData(map);
     applyLayerVisibility(map);
     ensureOverlayOrder(map);
+    const hit = useApp.getState().searchFocus?.hit;
+    if (hit) restoreSearchHighlight(map, hit);
   } catch (err) {
     console.error("rebuildOverlays failed", err);
   }
@@ -398,6 +497,7 @@ function applyNeighborhoodStyle(map: Map) {
     map.setPaintProperty("nb-line", "line-opacity", 1);
     map.setPaintProperty("nb-line", "line-width", 3);
   }
+  applySearchDim(map, useApp.getState().searchFocus?.hit ?? null);
 }
 
 function applyLayerVisibility(map: Map) {
@@ -421,6 +521,7 @@ function applyLayerVisibility(map: Map) {
   if (map.getLayer("streets-base")) {
     map.setPaintProperty("streets-base", "line-opacity", layers.buildings && !layers.bike ? 0.28 : 0.55);
   }
+  applySearchDim(map, useApp.getState().searchFocus?.hit ?? null);
 }
 
 function setVis(map: Map, id: string, on: boolean) {
@@ -431,6 +532,7 @@ function setVis(map: Map, id: string, on: boolean) {
 function ensureOverlayOrder(map: Map) {
   const bottomToTop = [
     "nb-fill",
+    ...searchGlowFillLayerIds(),
     "streets-base",
     "streets-school",
     "streets-bike",
@@ -443,6 +545,7 @@ function ensureOverlayOrder(map: Map) {
     BLD + "-line",
     "nb-halo",
     "nb-line",
+    ...searchGlowOverlayLayerIds(),
     "draw-line",
     "draw-pts",
   ];
@@ -465,6 +568,7 @@ function addSourcesAndLayers(map: Map) {
   if (!map.getSource(SRC)) map.addSource(SRC, { type: "geojson", data: empty(), tolerance: 0.4 });
   if (!map.getSource(NB)) map.addSource(NB, { type: "geojson", data: empty(), tolerance: 0.75 });
   if (!map.getSource(DRAW)) map.addSource(DRAW, { type: "geojson", data: empty() });
+  addSearchHighlightLayers(map);
 
   if (!map.getLayer("nb-fill")) {
     map.addLayer({

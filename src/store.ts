@@ -8,6 +8,8 @@ import {
   loadBuildingTypes,
   loadCustomNeighborhoods,
   loadMeasurements,
+  loadRemovedSids,
+  markRemovedSid,
   migrateV1,
   purgeAllMeasurements,
   purgeEmptyOrFlagOnlyMeasurements,
@@ -15,7 +17,10 @@ import {
   saveBuildingType,
   saveCustomNeighborhoods,
   saveMeasurement,
+  saveRemovedSids,
+  unmarkRemovedSid,
 } from "./lib/store";
+import { applyLocalEditsToCollection, fetchCommittedLocalEdits, mergeWorkingEdits } from "./lib/localEdits";
 import { neighborhoodIsActive } from "./lib/geoAssign";
 import {
   featureHasReservedParking,
@@ -33,6 +38,7 @@ import {
 import { assignFlagOffsets } from "./lib/streetPopup";
 import { VIEW_PRESETS, FOCUS_PRESETS, type FocusId, type LayerVisibility, type MapLayerId } from "./lib/layers";
 import { runImportPipeline, type ImportReport } from "./lib/importPipeline";
+import type { SearchFocus, SearchHit } from "./lib/mapSearch";
 
 type Filters = {
   /** Slug-uri cartiere selectate (multi). Goale = nimic pe hartă. */
@@ -65,11 +71,17 @@ type AppState = {
   themeOpen: boolean;
   editsOpen: boolean;
   importReportOpen: boolean;
+  searchOpen: boolean;
+  searchFocus: SearchFocus | null;
   sheetOpen: boolean;
   selected: Selected;
   streets: GeoJSON.FeatureCollection | null;
+  /** Pipeline CSV/OSM, fără overlay de editări locale. */
+  pipelineStreets: GeoJSON.FeatureCollection | null;
   neighborhoods: GeoJSON.FeatureCollection | null;
   measurements: Record<string, Measurement>;
+  /** Editări din `public/data/local-edits.json` (sursă pe site-ul live). */
+  committedEdits: Record<string, Measurement>;
   /** Catalog măsurători din CSV pe cartier (cheie cartier::strada). */
   seedMeasurements: Record<string, Measurement>;
   importReport: ImportReport | null;
@@ -104,6 +116,10 @@ type AppState = {
   closeEdits: () => void;
   toggleImportReport: () => void;
   closeImportReport: () => void;
+  toggleSearch: () => void;
+  closeSearch: () => void;
+  focusSearchResult: (hit: SearchHit) => void;
+  clearSearchFocus: () => void;
   selectStreet: (id: string, name: string, props: Record<string, unknown>) => void;
   selectBuilding: (id: string, type: string) => void;
   closeSheet: () => void;
@@ -124,6 +140,27 @@ type AppState = {
   doExport: () => void;
 };
 
+function syncWorkingStreets(
+  pipeline: GeoJSON.FeatureCollection | null,
+  committed: Record<string, Measurement>,
+  selected: Selected
+): {
+  measurements: Record<string, Measurement>;
+  streets: GeoJSON.FeatureCollection | null;
+  selected: Selected;
+} {
+  const measurements = mergeWorkingEdits(committed, loadMeasurements(), loadRemovedSids());
+  const streets = pipeline ? applyLocalEditsToCollection(pipeline, measurements) : null;
+  let nextSelected = selected;
+  if (selected?.kind === "street" && streets) {
+    const f = streets.features.find((x) => String((x.properties as { sid?: string })?.sid) === selected.id);
+    if (f) {
+      nextSelected = { ...selected, props: (f.properties || selected.props) as Record<string, unknown> };
+    }
+  }
+  return { measurements, streets, selected: nextSelected };
+}
+
 export const useApp = create<AppState>((set, get) => ({
   ready: false,
   loadingMsg: "Pregătim harta…",
@@ -142,11 +179,15 @@ export const useApp = create<AppState>((set, get) => ({
   themeOpen: false,
   editsOpen: false,
   importReportOpen: false,
+  searchOpen: false,
+  searchFocus: null,
   sheetOpen: false,
   selected: null,
   streets: null,
+  pipelineStreets: null,
   neighborhoods: null,
   measurements: {},
+  committedEdits: {},
   seedMeasurements: {},
   importReport: null,
   buildingTypes: {},
@@ -171,12 +212,15 @@ export const useApp = create<AppState>((set, get) => ({
         .catch(() => ({ type: "FeatureCollection", features: [] })) as Promise<GeoJSON.FeatureCollection>,
     ]);
 
-    const imported = await runImportPipeline(limits);
-    const streets = imported.streets;
+    const [imported, committedEdits] = await Promise.all([runImportPipeline(limits), fetchCommittedLocalEdits()]);
+    const pipelineStreets = imported.streets;
 
     purgeExcelSeedMeasurements();
-    migrateV1(streets);
+    migrateV1(pipelineStreets);
     purgeEmptyOrFlagOnlyMeasurements();
+
+    const measurements = mergeWorkingEdits(committedEdits, loadMeasurements(), loadRemovedSids());
+    const streets = applyLocalEditsToCollection(pipelineStreets, measurements);
 
     const officialFeatures = (limits.features || []).filter((f) =>
       neighborhoodIsActive(f.properties as { dissolve?: unknown })
@@ -202,11 +246,13 @@ export const useApp = create<AppState>((set, get) => ({
 
     set({
       streets,
+      pipelineStreets,
       neighborhoods: {
         type: "FeatureCollection",
         features: [...officialFeatures, ...(custom.features || [])],
       },
-      measurements: loadMeasurements(),
+      measurements,
+      committedEdits,
       seedMeasurements: imported.csvMeasurements,
       importReport: imported.report,
       importReportOpen: true,
@@ -312,17 +358,17 @@ export const useApp = create<AppState>((set, get) => ({
     set({ filters: { ...get().filters, schools: allOn ? [] : list } });
   },
   toggleFilters: () =>
-    set({ filtersOpen: !get().filtersOpen, basemapOpen: false, themeOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false }),
+    set({ filtersOpen: !get().filtersOpen, basemapOpen: false, themeOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false, searchOpen: false }),
   closeFilters: () => set({ filtersOpen: false }),
   closeStats: () => set({ statsOpen: false }),
   toggleBasemap: () =>
-    set({ basemapOpen: !get().basemapOpen, filtersOpen: false, themeOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false }),
+    set({ basemapOpen: !get().basemapOpen, filtersOpen: false, themeOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false, searchOpen: false }),
   toggleStats: () =>
-    set({ statsOpen: !get().statsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, editsOpen: false, importReportOpen: false }),
+    set({ statsOpen: !get().statsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, editsOpen: false, importReportOpen: false, searchOpen: false }),
   toggleTheme: () =>
-    set({ themeOpen: !get().themeOpen, filtersOpen: false, basemapOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false }),
+    set({ themeOpen: !get().themeOpen, filtersOpen: false, basemapOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false, searchOpen: false }),
   toggleEdits: () =>
-    set({ editsOpen: !get().editsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, statsOpen: false, importReportOpen: false }),
+    set({ editsOpen: !get().editsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, statsOpen: false, importReportOpen: false, searchOpen: false }),
   closeEdits: () => set({ editsOpen: false }),
   toggleImportReport: () =>
     set({
@@ -332,8 +378,32 @@ export const useApp = create<AppState>((set, get) => ({
       themeOpen: false,
       statsOpen: false,
       editsOpen: false,
+      searchOpen: false,
     }),
   closeImportReport: () => set({ importReportOpen: false }),
+  toggleSearch: () =>
+    set({
+      searchOpen: !get().searchOpen,
+      filtersOpen: false,
+      basemapOpen: false,
+      themeOpen: false,
+      statsOpen: false,
+      editsOpen: false,
+      importReportOpen: false,
+    }),
+  closeSearch: () => set({ searchOpen: false }),
+  focusSearchResult: (hit) =>
+    set({
+      searchOpen: false,
+      searchFocus: { token: (get().searchFocus?.token ?? 0) + 1, hit },
+      filtersOpen: false,
+      basemapOpen: false,
+      themeOpen: false,
+      statsOpen: false,
+      editsOpen: false,
+      importReportOpen: false,
+    }),
+  clearSearchFocus: () => set({ searchFocus: null }),
 
   selectStreet: (id, name, props) =>
     set({
@@ -345,6 +415,7 @@ export const useApp = create<AppState>((set, get) => ({
       editsOpen: false,
       statsOpen: false,
       importReportOpen: false,
+      searchOpen: false,
     }),
   selectBuilding: (id, type) =>
     set({
@@ -356,28 +427,41 @@ export const useApp = create<AppState>((set, get) => ({
       editsOpen: false,
       statsOpen: false,
       importReportOpen: false,
+      searchOpen: false,
     }),
   closeSheet: () => set({ sheetOpen: false, selected: null }),
 
   saveStreet: (id, data) => {
+    unmarkRemovedSid(id);
     saveMeasurement(id, data);
-    set({ measurements: loadMeasurements() });
-    get().showToast("Salvat — harta s-a actualizat");
+    set(syncWorkingStreets(get().pipelineStreets, get().committedEdits, get().selected));
+    get().showToast("Salvat pe acest segment");
   },
 
   deleteStreetEdit: (id) => {
-    set({ measurements: deleteMeasurement(id) });
+    markRemovedSid(id);
+    deleteMeasurement(id);
     const sel = get().selected;
-    if (sel?.kind === "street" && sel.id === id) {
-      set({ sheetOpen: false, selected: null });
-    }
-    get().showToast("Editare ștearsă");
+    const selected = sel?.kind === "street" && sel.id === id ? null : sel;
+    set({
+      ...syncWorkingStreets(get().pipelineStreets, get().committedEdits, selected),
+      ...(selected ? {} : { sheetOpen: false }),
+    });
+    get().showToast("Editare ștearsă pe acest segment");
   },
 
   purgeAllStreetEdits: () => {
+    saveRemovedSids([
+      ...loadRemovedSids(),
+      ...Object.keys(get().committedEdits),
+      ...Object.keys(loadMeasurements()),
+    ]);
     purgeAllMeasurements();
-    set({ measurements: {}, sheetOpen: false, selected: null });
-    get().showToast("Toate editările locale au fost șterse");
+    set({
+      ...syncWorkingStreets(get().pipelineStreets, get().committedEdits, null),
+      sheetOpen: false,
+    });
+    get().showToast("Editările din acest browser au fost golite");
   },
 
   openStreetEdit: (id) => {
@@ -394,6 +478,7 @@ export const useApp = create<AppState>((set, get) => ({
       themeOpen: false,
       statsOpen: false,
       editsOpen: false,
+      searchOpen: false,
     });
   },
 
@@ -562,7 +647,10 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   doExport: () => {
-    const blob = new Blob([JSON.stringify(exportAll(), null, 2)], { type: "application/json" });
+    const blob = new Blob(
+      [JSON.stringify({ ...exportAll(), measurements: get().measurements }, null, 2)],
+      { type: "application/json" }
+    );
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `map-the-city-${Date.now()}.json`;

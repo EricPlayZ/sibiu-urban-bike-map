@@ -3,6 +3,7 @@ import { FORM_FIELDS, type Measurement } from "./space";
 const KEY_M = "ubr_v2_measurements";
 const KEY_N = "ubr_v2_neighborhoods";
 const KEY_B = "ubr_v2_buildings";
+const KEY_REMOVED = "ubr_v2_removed_sids";
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -35,6 +36,23 @@ export function deleteMeasurement(id: string) {
 
 export function purgeAllMeasurements() {
   write(KEY_M, {});
+}
+
+export function loadRemovedSids(): string[] {
+  const ids = read<unknown>(KEY_REMOVED, []);
+  return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : [];
+}
+
+export function saveRemovedSids(ids: string[]) {
+  write(KEY_REMOVED, [...new Set(ids)]);
+}
+
+export function markRemovedSid(id: string) {
+  saveRemovedSids([...loadRemovedSids(), id]);
+}
+
+export function unmarkRemovedSid(id: string) {
+  saveRemovedSids(loadRemovedSids().filter((x) => x !== id));
 }
 
 export function loadCustomNeighborhoods(): GeoJSON.FeatureCollection {

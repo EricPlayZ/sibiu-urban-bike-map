@@ -15,6 +15,7 @@ import {
   clipStreetToNeighborhoods,
   geometryLineStrings,
   neighborhoodIsActive,
+  shouldKeepUncut,
   type ClippedStreetPiece,
   type NeighborhoodPoly,
 } from "./geoAssign";
@@ -25,6 +26,7 @@ import {
   groupByNameKey,
   matchCsvNameToOsm,
   measurementCatalogKey,
+  nameKey,
   type ImportIssue,
   type OsmStreet,
 } from "./streetMatch";
@@ -266,88 +268,20 @@ export async function runImportPipeline(limits: GeoJSON.FeatureCollection): Prom
   const fallbackAssign = (
     geom: GeoJSON.Geometry,
     baseProps: Record<string, unknown>,
-    nameKey: string
+    streetNameKey: string
   ) => {
     const probe: GeoJSON.Feature = { type: "Feature", properties: baseProps, geometry: geom };
     const hit = assignStreetToNeighborhood(probe, polys);
     if (!hit) return null;
-    if (hit.method !== "bbox" || !nameKey || !inPolygonKeys.has(`${hit.slug}::${nameKey}`)) return hit;
-    const allowed = polys.filter((p) => !inPolygonKeys.has(`${p.slug}::${nameKey}`));
+    if (hit.method !== "bbox" || !streetNameKey || !inPolygonKeys.has(`${hit.slug}::${streetNameKey}`)) return hit;
+    const allowed = polys.filter((p) => !inPolygonKeys.has(`${p.slug}::${streetNameKey}`));
     return assignStreetToNeighborhood(probe, allowed);
   };
 
-  for (const row of prepared) {
-    if (row.pieces.length) {
-      const nhoods = [...new Set(row.pieces.map((p) => p.neighborhood.slug))];
-      if (nhoods.length > 1) {
-        const osmName = String(row.baseProps.name || "");
-        const osmId = (row.baseProps.osm_id as string | number | undefined) || undefined;
-        for (const slug of nhoods) {
-          issues.push({
-            code: "osm_clipped_neighborhood",
-            severity: "info",
-            neighborhood_slug: slug,
-            osm_name: osmName || undefined,
-            osm_id: osmId,
-            detail: `OSM „${osmName || osmId || "?"}” tăiat pe limita dintre cartiere; porțiuni în ${nhoods.join(", ")} (${row.pieces.length} segmente).`,
-          });
-        }
-      }
-      for (const piece of row.pieces) {
-        pushAssigned(
-          { type: "LineString", coordinates: piece.coordinates },
-          row.baseProps,
-          piece.neighborhood,
-          "clip"
-        );
-      }
-      for (const line of geometryLineStrings(row.geometry)) {
-        for (const coordinates of clipLineOutsideNeighborhoods(line, polys)) {
-          // Restul e în afara poligoanelor (mijloc de subsegment). Nu-l reasignăm:
-          // un vârf de pe contur ar da coverage > 0 și ar păstra props-urile cartierului.
-          pushUnassigned({ type: "LineString", coordinates }, row.baseProps);
-        }
-      }
-      continue;
-    }
-
-    if (!row.geometry) continue;
-    const hit = fallbackAssign(row.geometry, row.baseProps, row.nameKey);
-    if (hit) pushAssigned(row.geometry, row.baseProps, hit, hit.method);
-    else pushUnassigned(row.geometry, row.baseProps);
-  }
-
-  const assignedCount = features.filter((f) => String((f.properties as { cartier?: string })?.cartier || "")).length;
-  const unassignedCount = features.length - assignedCount;
-  if (unassignedCount > UNASSIGNED_SAMPLE_LIMIT) {
-    issues.push({
-      code: "osm_unassigned_neighborhood",
-      severity: "warn",
-      detail: `+${unassignedCount - UNASSIGNED_SAMPLE_LIMIT} străzi neatribuite (total ${unassignedCount}).`,
-      hint: "Poligoanele de cartier acoperă doar o parte din oraș.",
-    });
-  }
-
-  const osmByCartier = new Map<string, OsmStreet[]>();
-  for (const f of features) {
-    const p = (f.properties || {}) as Record<string, unknown>;
-    const cartier = String(p.cartier || "");
-    if (!cartier) continue;
-    const list = osmByCartier.get(cartier) || [];
-    list.push({
-      feature: f,
-      sid: String(p.sid || ""),
-      name: String(p.name || ""),
-      key: normalizeStreetName(String(p.name || "")),
-      cartier,
-    });
-    osmByCartier.set(cartier, list);
-  }
-
   const csvMeasurements: Record<string, Measurement> = {};
   const csvFilesLoaded: string[] = [];
-  let matchedCsvRows = 0;
-  const matchedSids = new Set<string>();
+  const loadedCsvs: { slug: string; rows: CsvStreetRow[] }[] = [];
+  const csvNameKeysBySlug = new Map<string, Set<string>>();
 
   const csvSlugs = await resolveCsvSlugs(polys.map((p) => p.slug));
   if (!csvSlugs.length) {
@@ -406,6 +340,105 @@ export async function runImportPipeline(limits: GeoJSON.FeatureCollection): Prom
       }
     }
 
+    const keys = new Set<string>();
+    for (const row of rows) {
+      if (rowHasAnyWidth(row)) keys.add(nameKey(row.name));
+    }
+    csvNameKeysBySlug.set(slug, keys);
+    loadedCsvs.push({ slug, rows });
+  }
+
+  const dataSlugsFor = (streetNameKey: string) => {
+    const slugs = new Set<string>();
+    if (!streetNameKey) return slugs;
+    for (const [slug, keys] of csvNameKeysBySlug) {
+      if (keys.has(streetNameKey)) slugs.add(slug);
+    }
+    return slugs;
+  };
+
+  for (const row of prepared) {
+    if (row.pieces.length) {
+      const nhoods = [...new Set(row.pieces.map((p) => p.neighborhood.slug))];
+      const outside: GeoJSON.Position[][] = [];
+      for (const line of geometryLineStrings(row.geometry)) {
+        outside.push(...clipLineOutsideNeighborhoods(line, polys));
+      }
+
+      const owner = shouldKeepUncut(row.geometry, row.pieces, outside.length > 0, dataSlugsFor(row.nameKey));
+
+      if (owner && row.geometry) {
+        pushAssigned(row.geometry, row.baseProps, owner, "uncut");
+        continue;
+      }
+
+      if (nhoods.length > 1) {
+        const osmName = String(row.baseProps.name || "");
+        const osmId = (row.baseProps.osm_id as string | number | undefined) || undefined;
+        for (const slug of nhoods) {
+          issues.push({
+            code: "osm_clipped_neighborhood",
+            severity: "info",
+            neighborhood_slug: slug,
+            osm_name: osmName || undefined,
+            osm_id: osmId,
+            detail: `OSM „${osmName || osmId || "?"}” tăiat pe limita dintre cartiere; porțiuni în ${nhoods.join(", ")} (${row.pieces.length} segmente).`,
+          });
+        }
+      }
+      for (const piece of row.pieces) {
+        pushAssigned(
+          { type: "LineString", coordinates: piece.coordinates },
+          row.baseProps,
+          piece.neighborhood,
+          "clip"
+        );
+      }
+      for (const coordinates of outside) {
+        // Restul e în afara poligoanelor (mijloc de subsegment). Nu-l reasignăm:
+        // un vârf de pe contur ar da coverage > 0 și ar păstra props-urile cartierului.
+        pushUnassigned({ type: "LineString", coordinates }, row.baseProps);
+      }
+      continue;
+    }
+
+    if (!row.geometry) continue;
+    const hit = fallbackAssign(row.geometry, row.baseProps, row.nameKey);
+    if (hit) pushAssigned(row.geometry, row.baseProps, hit, hit.method);
+    else pushUnassigned(row.geometry, row.baseProps);
+  }
+
+  const assignedCount = features.filter((f) => String((f.properties as { cartier?: string })?.cartier || "")).length;
+  const unassignedCount = features.length - assignedCount;
+  if (unassignedCount > UNASSIGNED_SAMPLE_LIMIT) {
+    issues.push({
+      code: "osm_unassigned_neighborhood",
+      severity: "warn",
+      detail: `+${unassignedCount - UNASSIGNED_SAMPLE_LIMIT} străzi neatribuite (total ${unassignedCount}).`,
+      hint: "Poligoanele de cartier acoperă doar o parte din oraș.",
+    });
+  }
+
+  const osmByCartier = new Map<string, OsmStreet[]>();
+  for (const f of features) {
+    const p = (f.properties || {}) as Record<string, unknown>;
+    const cartier = String(p.cartier || "");
+    if (!cartier) continue;
+    const list = osmByCartier.get(cartier) || [];
+    list.push({
+      feature: f,
+      sid: String(p.sid || ""),
+      name: String(p.name || ""),
+      key: normalizeStreetName(String(p.name || "")),
+      cartier,
+    });
+    osmByCartier.set(cartier, list);
+  }
+
+  let matchedCsvRows = 0;
+  const matchedSids = new Set<string>();
+
+  for (const { slug, rows } of loadedCsvs) {
     const inCartier = osmByCartier.get(slug) || [];
     const byKey = groupByNameKey(inCartier);
 

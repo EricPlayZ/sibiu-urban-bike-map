@@ -8,12 +8,16 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "start": "vite --host --port 5500",
-    "fetch-osm": "node scripts/fetch-osm-streets.mjs"
+    "fetch-osm": "node scripts/fetch-osm-streets.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@turf/buffer": "^7.4.0",
+    "@turf/helpers": "^7.4.0",
     "framer-motion": "^12.23.12",
     "lucide-react": "^1.28.0",
     "maplibre-gl": "^4.7.1",
+    "polygon-clipping": "^0.15.7",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "zustand": "^5.0.8"
@@ -23,6 +27,7 @@
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.9.2",
-    "vite": "^7.1.2"
+    "vite": "^7.1.2",
+    "vitest": "^4.1.10"
   }
 }

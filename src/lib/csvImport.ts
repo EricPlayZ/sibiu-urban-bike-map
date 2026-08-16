@@ -106,40 +106,19 @@ export function avgPositive(...vals: (number | undefined)[]): number | undefined
   return Math.round((sum / xs.length) * 1000) / 1000;
 }
 
-/**
- * Perechile 1/2 (trotuar, parcare, pistă, verde, liber) → o singură lățime (media),
- * stocată pe câmpul *1*; *2* rămâne gol ca să nu dublăm în barra de spațiu.
- */
-export function collapseSidePairs(row: CsvStreetRow): CsvStreetRow {
-  return {
-    ...row,
-    sidewalk1_m: avgPositive(row.sidewalk1_m, row.sidewalk2_m),
-    sidewalk2_m: undefined,
-    parking1_m: avgPositive(row.parking1_m, row.parking2_m),
-    parking2_m: undefined,
-    free_sidewalk1_m: avgPositive(row.free_sidewalk1_m, row.free_sidewalk2_m),
-    free_sidewalk2_m: undefined,
-    bike1_m: avgPositive(row.bike1_m, row.bike2_m),
-    bike2_m: undefined,
-    green1_m: avgPositive(row.green1_m, row.green2_m),
-    green2_m: undefined,
-  };
-}
-
-/** Media pe mai multe rânduri CSV (ex. „Stefan cel Mare 1” + „… 2”). */
+/** Media pe mai multe rânduri CSV (ex. „Stefan cel Mare 1” + „… 2”), păstrând coloanele stânga/dreapta. */
 export function averageCsvRows(rows: CsvStreetRow[], displayName: string): CsvStreetRow {
-  const collapsed = rows.map(collapseSidePairs);
   const out: CsvStreetRow = { name: displayName, _mergedFrom: rows.length };
   for (const key of WIDTH_KEYS) {
-    out[key] = avgPositive(...collapsed.map((r) => r[key]));
+    out[key] = avgPositive(...rows.map((r) => r[key]));
   }
-  // După medie pe rânduri, mai colapsăm perechile (în caz că unele rânduri aveau doar *2*).
-  return collapseSidePairs(out);
+  return out;
 }
 
 /**
  * Grupează „Nume 1”, „Nume 2” → o măsurătoare medie pe numele de bază.
  * Numele afișat = baza fără sufix numeric.
+ * Coloanele 1/2 (trotuar, parcare, …) rămân pe partea lor — nu se mediează între stânga și dreapta.
  */
 export function mergeNumberedCsvStreets(rows: CsvStreetRow[]): CsvStreetRow[] {
   const groups = new Map<string, CsvStreetRow[]>();
@@ -154,7 +133,7 @@ export function mergeNumberedCsvStreets(rows: CsvStreetRow[]): CsvStreetRow[] {
   for (const [, list] of groups) {
     const { base } = stripSegmentSuffix(list[0].name);
     if (list.length === 1 && stripSegmentSuffix(list[0].name).index == null) {
-      out.push(collapseSidePairs(list[0]));
+      out.push(list[0]);
     } else {
       out.push(averageCsvRows(list, base));
     }

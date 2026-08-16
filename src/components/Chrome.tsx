@@ -106,7 +106,7 @@ export function MobileDock() {
           <span>Filtre</span>
         </button>
       </div>
-      <div className="mobile-dock-row mobile-dock-tools with-edits" role="group" aria-label="Unelte">
+      <div className="mobile-dock-row mobile-dock-tools" role="group" aria-label="Unelte">
         <button type="button" className={basemapOpen ? "on" : ""} onClick={toggleBasemap} aria-pressed={basemapOpen}>
           <Layers size={18} strokeWidth={2.25} />
           <span>Hartă</span>

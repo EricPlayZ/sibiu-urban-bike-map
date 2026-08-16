@@ -177,17 +177,14 @@ export function hasAnyEdit(m?: Measurement | null) {
  * Măsurători reale pe dispozitiv (lățimi / salvare din editor).
  * Nu numărăm resturi Excel / flag-uri fără salvare locală — datele vin din streets.geojson.
  */
+/**
+ * Override explicit pe un `sid` (inclusiv golire: toate lățimile 0).
+ * `source: "local"` = utilizatorul a apăsat Salvează; nu e rest Excel.
+ */
 export function hasMeaningfulLocalEdit(m?: Measurement | null) {
   if (!m) return false;
-  if (m.source === "local") {
-    if (m.illgl_park === true) return true;
-    return FORM_FIELDS.some((f) => {
-      const v = m[f.key];
-      if (v == null || v === ("" as never)) return false;
-      const n = Number(v);
-      return Number.isFinite(n) && n > 0;
-    });
-  }
+  if (m.source === "local") return true;
+  if (m.illgl_park === true) return true;
   return FORM_FIELDS.some((f) => {
     const v = m[f.key];
     if (v == null || v === ("" as never)) return false;
@@ -453,8 +450,8 @@ export function measurementFromGeoProps(props: Record<string, unknown> | null | 
 }
 
 /**
- * Măsurătoare afișată / editabilă: geojson → seed catalog → override local.
- * Seed-ul NU e „editare locală”; local câștigă mereu.
+ * Măsurătoare afișată / editabilă: geojson → seed CSV (pe nume) → override local (pe sid).
+ * O editare locală pe sid e completă: nu mai completăm lățimi din CSV-ul fraților.
  */
 export function resolveStreetMeasurement(
   sid: string,
@@ -465,15 +462,25 @@ export function resolveStreetMeasurement(
   const base = measurementFromGeoProps(props);
   const cartier = String(props?.cartier || base.neighborhood_slug || "");
   const name = String(props?.name || base.name || "");
-  const seed = seedByLookup[lookupKey(cartier, name)];
   const loc = local[sid];
+  if (loc && hasMeaningfulLocalEdit(loc)) {
+    const length = n(loc.length_m) > 0 ? loc.length_m : base.length_m;
+    return {
+      ...loc,
+      street_id: sid,
+      name: loc.name || base.name || name || undefined,
+      neighborhood_slug: loc.neighborhood_slug || cartier || undefined,
+      length_m: length,
+      source: loc.source || "local",
+    };
+  }
+  const seed = seedByLookup[lookupKey(cartier, name)];
   return {
     ...base,
     ...(seed || {}),
-    ...(loc || {}),
-    name: loc?.name || seed?.name || base.name || name || undefined,
+    name: seed?.name || base.name || name || undefined,
     street_id: sid,
-    source: loc?.source || seed?.source || base.source,
+    source: seed?.source || base.source,
   };
 }
 

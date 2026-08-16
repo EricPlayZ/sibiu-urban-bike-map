@@ -245,3 +245,12 @@ export function schoolPopupHtml(
     </div>
   </div>`;
 }
+
+export function neighborhoodPopupHtml(name: string) {
+  return `<div class="map-popup">
+    <div class="mp-body">
+      <strong class="mp-title">${escapeHtml(name)}</strong>
+      <div class="mp-chips"><span class="mp-chip" style="--c:${LAYER_COLORS.base}">Cartier</span></div>
+    </div>
+  </div>`;
+}

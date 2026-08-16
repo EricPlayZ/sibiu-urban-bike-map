@@ -237,6 +237,39 @@ export function clipStreetToNeighborhoods(
   return out;
 }
 
+/**
+ * Excepție la tăiere, pe fiecare way OSM (nu pe tot numele străzii):
+ * un LineString care iese din cartier (în altul sau în afara poligoanelor).
+ * Dacă exact un cartier dintre cele intersectate are date, păstrăm linia întreagă acolo.
+ * Dual carriageway = două way-uri paralele, fiecare se judecă separat.
+ * Way-urile complet în afara poligonului nu ajung aici (rămân neatribuite).
+ */
+export function uncutOwner(
+  pieces: ClippedStreetPiece[],
+  hasOutsideRemainder: boolean,
+  dataSlugs: ReadonlySet<string>
+): NeighborhoodPoly | null {
+  if (!pieces.length) return null;
+  const bySlug = new Map<string, NeighborhoodPoly>();
+  for (const p of pieces) bySlug.set(p.neighborhood.slug, p.neighborhood);
+  const crossed = [...bySlug.keys()];
+  const withData = crossed.filter((s) => dataSlugs.has(s));
+  if (withData.length !== 1) return null;
+  if (crossed.length < 2 && !hasOutsideRemainder) return null;
+  return bySlug.get(withData[0]) || null;
+}
+
+/** Păstrează geometria OSM întreagă doar dacă e un singur LineString pe acest way. */
+export function shouldKeepUncut(
+  geom: GeoJSON.Geometry | null | undefined,
+  pieces: ClippedStreetPiece[],
+  hasOutsideRemainder: boolean,
+  dataSlugs: ReadonlySet<string>
+): NeighborhoodPoly | null {
+  if (geometryLineStrings(geom).length !== 1) return null;
+  return uncutOwner(pieces, hasOutsideRemainder, dataSlugs);
+}
+
 function lineCoords(geom: GeoJSON.Geometry | null | undefined): LngLat[] {
   if (!geom) return [];
   if (geom.type === "LineString") return geom.coordinates as LngLat[];

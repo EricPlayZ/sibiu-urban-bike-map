@@ -1,7 +1,8 @@
-import { FormEvent, useEffect, useLayoutEffect, useMemo, useState, type CSSProperties } from "react";
+import { FormEvent, useLayoutEffect, useMemo, useState, type CSSProperties } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Home, Building2, Package, HelpCircle, Pencil, X, Ruler, Road, Car, Footprints, ParkingSquare, Bike, Trees, TriangleAlert, Save, Trash2 } from "lucide-react";
 import { useApp } from "../store";
+import { isDesktopViewport } from "../lib/breakpoints";
 import { FORM_FIELDS, pct, spaceShares, featureHasIllegalParking, featureHasReservedParking, resolveStreetMeasurement, streetBikeLaneStatus, streetHasBikeLane, type Measurement } from "../lib/space";
 
 const FIELD_ICONS: Partial<Record<keyof Measurement, typeof Ruler>> = {
@@ -41,7 +42,7 @@ export function DetailSheet() {
         return resolveStreetMeasurement(selected.id, selected.props, measurements, seedMeasurements);
     }, [selected, measurements, seedMeasurements]);
     const hasLocalEdit = selected?.kind === "street" ? Boolean(measurements[selected.id]) : false;
-    const desktop = typeof window !== "undefined" && window.matchMedia("(min-width: 861px)").matches;
+    const desktop = isDesktopViewport();
 
     // Scrimul se demontează imediat; panoul rămâne pe exit — fără hit-testing în timpul animației.
     useLayoutEffect(() => {
@@ -79,6 +80,7 @@ export function DetailSheet() {
                         {selected.kind === "street" ? (
                             editMode ? (
                                 <StreetEditor
+                                    key={selected.id}
                                     id={selected.id}
                                     name={selected.name}
                                     initial={existing}
@@ -168,17 +170,14 @@ function StreetEditor({
     onSave: (d: Measurement) => void;
     onClose: () => void;
 }) {
-    const [draft, setDraft] = useState<Measurement>(() => ({ name, ...initial }));
-    useEffect(() => {
-        setDraft({ name, ...initial });
-    }, [id, name, initial]);
+    const [draft, setDraft] = useState<Measurement>(() => ({ name, ...initial, source: "local" }));
 
     const onSubmit = (e: FormEvent) => {
         e.preventDefault();
-        onSave(draft);
+        onSave({ ...draft, name: draft.name || name, source: "local" });
     };
 
-    const fromSeed = initial?.source === "seed" && !hasLocalEdit;
+    const fromSeed = (initial?.source === "seed" || initial?.source === "csv") && !hasLocalEdit;
 
     return (
         <div className="sheet-body editor-sheet">
@@ -195,8 +194,10 @@ function StreetEditor({
             </div>
             <p className="sub">
                 {fromSeed
-                    ? "Valorile de mai jos vin din măsurătorile existente pe stradă — le poți ajusta și salva local."
-                    : "Completează lățimile — pe hartă apare imediat ca măsurătoare locală."}
+                    ? "Datele s-au aplicat pe toate segmentele cu acest nume. Salvarea rămâne doar pe acest segment."
+                    : hasLocalEdit
+                      ? "Editare pe acest segment, nu pe toată strada."
+                      : "Completează lățimile — salvarea e doar pe acest segment, nu pe celelalte bucăți cu același nume."}
             </p>
             <SpaceBar m={draft} />
             <form className="form" onSubmit={onSubmit}>

@@ -16,7 +16,15 @@ export function EditsPanel() {
 
   const streetName = (id: string, m: (typeof measurements)[string]) => {
     const f = streets?.features.find((x) => String((x.properties as { sid?: string })?.sid) === id);
-    return String((f?.properties as { name?: string })?.name || m.name || id);
+    const p = (f?.properties || {}) as { name?: string; cartier_name?: string; cartier?: string };
+    return String(p.name || m.name || id);
+  };
+
+  const streetMeta = (id: string) => {
+    const f = streets?.features.find((x) => String((x.properties as { sid?: string })?.sid) === id);
+    const p = (f?.properties || {}) as { cartier_name?: string; cartier?: string };
+    const cartier = String(p.cartier_name || p.cartier || "").trim();
+    return cartier;
   };
 
   return (
@@ -36,17 +44,19 @@ export function EditsPanel() {
             </button>
           </div>
 
+          <p className="hint-text">Editările sunt pe un singur segment de stradă, nu pe toată strada.</p>
+
           {editedEntries.length === 0 ? (
-            <p className="hint-text">Nu există măsurători salvate pe acest dispozitiv.</p>
+            <p className="hint-text">Nu există editări pe segment.</p>
           ) : (
             <>
               <div className="edits-head">
-                <span className="edits-count">{editedEntries.length} străzi</span>
+                <span className="edits-count">{editedEntries.length} segmente</span>
                 <button
                   type="button"
                   className="btn danger-ghost"
                   onClick={() => {
-                    if (window.confirm(`Ștergi toate cele ${editedEntries.length} editări locale?`)) purgeAllStreetEdits();
+                    if (window.confirm(`Ștergi toate cele ${editedEntries.length} editări din acest browser?`)) purgeAllStreetEdits();
                   }}
                 >
                   Șterge tot
@@ -55,7 +65,10 @@ export function EditsPanel() {
               <ul className="edits-list">
                 {editedEntries.map(([id, m]) => (
                   <li key={id}>
-                    <span className="edits-name">{streetName(id, m)}</span>
+                    <span className="edits-name">
+                      {streetName(id, m)}
+                      {streetMeta(id) ? <span className="edits-sid">{streetMeta(id)}</span> : null}
+                    </span>
                     <span className="edits-actions">
                       <button type="button" className="icon-mini" title="Editează" aria-label="Editează" onClick={() => openStreetEdit(id)}>
                         <Pencil size={15} strokeWidth={2.25} />

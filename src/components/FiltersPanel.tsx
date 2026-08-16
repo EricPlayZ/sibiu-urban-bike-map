@@ -1,15 +1,16 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { Bike, CheckCheck, Eye, GraduationCap, Leaf, ParkingSquare, Ruler, X } from "lucide-react";
+import { DESKTOP_MEDIA } from "../lib/breakpoints";
 import { useApp } from "../store";
 import { LAYER_META, layersMatchFocus, layersMatchPreset } from "../lib/layers";
 
 function useIsDesktop() {
   const [desktop, setDesktop] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia("(min-width: 861px)").matches : false
+    typeof window !== "undefined" ? window.matchMedia(DESKTOP_MEDIA).matches : false
   );
   useEffect(() => {
-    const mq = window.matchMedia("(min-width: 861px)");
+    const mq = window.matchMedia(DESKTOP_MEDIA);
     const onChange = () => setDesktop(mq.matches);
     onChange();
     mq.addEventListener("change", onChange);
