@@ -19,6 +19,8 @@ import {
 } from "../lib/searchHighlight";
 import { neighborhoodLabelCollection } from "../lib/geoAssign";
 import { hitAnchor, hitPrimaryFeature, type SearchHit } from "../lib/mapSearch";
+import { isMobileViewport } from "../lib/breakpoints";
+import { hitRadiusPx, queryClosestFeature, queryRenderedNear } from "../lib/mapHit";
 
 const SRC = "streets";
 const NB = "nb";
@@ -107,14 +109,27 @@ export function MapView() {
     });
   };
 
+  const openMapPopup = (map: Map, lngLat: maplibregl.LngLatLike, html: string, offset: number) => {
+    clearStreetPopup();
+    streetPopupRef.current = new maplibregl.Popup({
+      closeOnClick: true,
+      focusAfterOpen: false,
+      maxWidth: isMobileViewport() ? "280px" : "320px",
+      offset,
+      className: "ubr-street-popup",
+    })
+      .setLngLat(lngLat)
+      .setHTML(html)
+      .addTo(map);
+    bindPopupClose(streetPopupRef.current);
+  };
+
   const showSearchPopup = (map: Map, hit: SearchHit) => {
     const st = useApp.getState();
     if (st.editMode) return;
     const anchor = hitAnchor(hit);
     if (!anchor) return;
     st.closeSheet();
-    clearStreetPopup();
-
     let html = "";
     if (hit.kind === "street") {
       const feat = hitPrimaryFeature(hit);
@@ -129,16 +144,7 @@ export function MapView() {
       html = neighborhoodPopupHtml(hit.label);
     }
 
-    streetPopupRef.current = new maplibregl.Popup({
-      closeOnClick: true,
-      maxWidth: "320px",
-      offset: hit.kind === "school" ? 18 : 14,
-      className: "ubr-street-popup",
-    })
-      .setLngLat(anchor)
-      .setHTML(html)
-      .addTo(map);
-    bindPopupClose(streetPopupRef.current);
+    openMapPopup(map, anchor, html, hit.kind === "school" ? 18 : 14);
   };
 
   useEffect(() => {
@@ -264,21 +270,11 @@ export function MapView() {
       el.addEventListener("click", (ev) => {
         ev.stopPropagation();
         const st = useApp.getState();
-        clearStreetPopup();
         dismissSearchHighlight();
         st.closeSheet();
         const selected = new Set(st.filters.neighborhoods);
         const html = schoolPopupHtml((f.properties || {}) as Record<string, unknown>, st.streets, selected);
-        streetPopupRef.current = new maplibregl.Popup({
-          closeOnClick: true,
-          maxWidth: "320px",
-          offset: 18,
-          className: "ubr-street-popup",
-        })
-          .setLngLat([lng, lat])
-          .setHTML(html)
-          .addTo(map);
-        bindPopupClose(streetPopupRef.current);
+        openMapPopup(map, [lng, lat], html, 18);
       });
       const marker = new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([lng, lat]).addTo(map);
       schoolMarkersRef.current.push(marker);
@@ -296,6 +292,7 @@ export function MapView() {
 
     const onClick = (e: maplibregl.MapMouseEvent) => {
       const st = useApp.getState();
+      const radius = hitRadiusPx(e.originalEvent);
       if (st.layers.buildings && map.getLayer(BLD + "-fill")) {
         const bhits = map.queryRenderedFeatures(e.point, { layers: [BLD + "-fill"] });
         if (bhits[0]) {
@@ -304,19 +301,8 @@ export function MapView() {
           const btype = String(p.ubr_type || "necunoscut");
           if (!st.editMode) {
             st.closeSheet();
-            clearStreetPopup();
             dismissSearchHighlight();
-            const html = buildingPopupHtml(btype);
-            streetPopupRef.current = new maplibregl.Popup({
-              closeOnClick: true,
-              maxWidth: "320px",
-              offset: 12,
-              className: "ubr-street-popup",
-            })
-              .setLngLat(e.lngLat)
-              .setHTML(html)
-              .addTo(map);
-            bindPopupClose(streetPopupRef.current);
+            openMapPopup(map, e.lngLat, buildingPopupHtml(btype), 12);
             return;
           }
           clearStreetPopup();
@@ -326,13 +312,13 @@ export function MapView() {
         }
       }
       const layers = STREET_HIT_LAYERS.filter((id) => map.getLayer(id));
-      const hits = map.queryRenderedFeatures(e.point, { layers });
-      if (!hits[0]) {
+      const streetHit = queryClosestFeature(map, e.point, layers, radius);
+      if (!streetHit) {
         clearStreetPopup();
         dismissSearchHighlight();
         return;
       }
-      const hitProps = (hits[0].properties || {}) as Record<string, unknown>;
+      const hitProps = (streetHit.properties || {}) as Record<string, unknown>;
       const sid = String(hitProps.sid || "");
       const rawFeat = st.streets?.features.find((f) => String((f.properties as { sid?: string })?.sid || "") === sid);
       const p = ((rawFeat?.properties || hitProps) as Record<string, unknown>);
@@ -341,19 +327,9 @@ export function MapView() {
       // În vizualizare: popup pe hartă (ca originalul). În editare: panoul de detalii.
       if (!st.editMode) {
         st.closeSheet();
-        clearStreetPopup();
         dismissSearchHighlight();
         const html = streetPopupHtml(p, st.schools, st.measurementForStreet(sid, p));
-        streetPopupRef.current = new maplibregl.Popup({
-          closeOnClick: true,
-          maxWidth: "320px",
-          offset: 14,
-          className: "ubr-street-popup",
-        })
-          .setLngLat(e.lngLat)
-          .setHTML(html)
-          .addTo(map);
-        bindPopupClose(streetPopupRef.current);
+        openMapPopup(map, e.lngLat, html, 14);
         return;
       }
 
@@ -364,7 +340,7 @@ export function MapView() {
 
     const onMove = (e: maplibregl.MapMouseEvent) => {
       const layers = [...STREET_HIT_LAYERS, BLD + "-fill"].filter((id) => map.getLayer(id));
-      const hits = map.queryRenderedFeatures(e.point, { layers });
+      const hits = queryRenderedNear(map, e.point, layers, hitRadiusPx(e.originalEvent));
       map.getCanvas().style.cursor = hits.length ? "pointer" : "";
     };
 

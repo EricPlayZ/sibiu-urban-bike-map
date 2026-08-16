@@ -1709,6 +1709,50 @@ html[data-theme="dark"] .bldg-chip {
   .sheet {
     padding-bottom: calc(var(--mobile-dock-top, 120px) + 8px);
   }
+
+  /* Cardul de pe hartă: compact + gesturile de pan/pinch trec prin el. */
+  .ubr-street-popup .maplibregl-popup-content,
+  .ubr-street-popup .maplibregl-popup-content * {
+    pointer-events: none;
+  }
+  .ubr-street-popup .maplibregl-popup-close-button {
+    pointer-events: auto;
+    width: 36px;
+    height: 36px;
+    top: 6px;
+    right: 6px;
+  }
+  .map-popup {
+    width: min(248px, 68vw);
+  }
+  .map-popup .mp-media {
+    height: 72px;
+  }
+  .map-popup .mp-media-empty {
+    display: none;
+  }
+  .map-popup .mp-body {
+    padding: 10px 12px 12px;
+  }
+  .map-popup .mp-title {
+    font-size: 15px;
+    padding-right: 28px;
+  }
+  .map-popup .mp-row {
+    min-height: 0;
+    padding: 6px 8px;
+    gap: 8px;
+    grid-template-columns: 28px 1fr;
+  }
+  .map-popup .mp-ico {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+  }
+  .map-popup .mp-space {
+    margin-top: 8px;
+    padding: 8px;
+  }
 }
 
 @media (min-width: 900px) {
@@ -1730,6 +1774,17 @@ html[data-theme="dark"] .bldg-chip {
   }
   .mobile-dock {
     display: none !important;
+  }
+}
+
+/* Tablete / touch fără hover: pan și pinch prin card, chiar dacă layout-ul e desktop. */
+@media (hover: none) and (pointer: coarse) {
+  .ubr-street-popup .maplibregl-popup-content,
+  .ubr-street-popup .maplibregl-popup-content * {
+    pointer-events: none;
+  }
+  .ubr-street-popup .maplibregl-popup-close-button {
+    pointer-events: auto;
   }
 }
 
