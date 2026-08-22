@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { MapView } from "./components/MapView";
 import { TopBar } from "./components/TopBar";
 import { FiltersPanel } from "./components/FiltersPanel";
@@ -8,12 +8,20 @@ import { CsvEditorPanel } from "./components/CsvEditorPanel";
 import { DetailSheet } from "./components/DetailSheet";
 import { ImportReportPanel } from "./components/ImportReportPanel";
 import { Loader, MobileDock, Toast } from "./components/Chrome";
+import { TeamLogin } from "./components/TeamLogin";
 import { useApp } from "./store";
 import { applyDocumentTheme } from "./lib/theme";
 
 export default function App() {
   const init = useApp((s) => s.init);
   const uiTheme = useApp((s) => s.uiTheme);
+  const [teamGate, setTeamGate] = useState(() => window.location.pathname.replace(/\/+$/, "") === "/echipa");
+
+  useEffect(() => {
+    const onPop = () => setTeamGate(window.location.pathname.replace(/\/+$/, "") === "/echipa");
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   useEffect(() => {
     init().catch((e) => {
@@ -38,12 +46,13 @@ export default function App() {
       <FiltersPanel />
       <StatsPanel />
       <EditsPanel />
-      {import.meta.env.DEV ? <CsvEditorPanel /> : null}
+      <CsvEditorPanel />
       <ImportReportPanel />
       <DetailSheet />
       <MobileDock />
       <Toast />
       <Loader />
+      {teamGate ? <TeamLogin /> : null}
     </div>
   );
 }

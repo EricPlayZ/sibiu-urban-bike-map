@@ -1,0 +1,45 @@
+# /opt/stacks/mapthecity/docker-compose.yml
+# .env lângă acest fișier: GITHUB_TOKEN, EDIT_PASSWORD, SESSION_SECRET, PUBLIC_ORIGIN
+
+services:
+  mapthecity:
+    env_file: .env
+    build:
+      context: https://${GITHUB_TOKEN}@github.com/EricPlayZ/sibiu-urban-bike-map.git#feat/csv-osm-import
+      dockerfile: Dockerfile
+      target: runtime
+    image: mapthecity:latest
+    container_name: mapthecity
+    restart: on-failure:5
+    volumes:
+      - mapthecity-edits:/var/lib/ubr/edits:ro
+    depends_on:
+      mapthecity-api:
+        condition: service_healthy
+    networks:
+      - aeanet
+
+  mapthecity-api:
+    env_file: .env
+    build:
+      context: https://${GITHUB_TOKEN}@github.com/EricPlayZ/sibiu-urban-bike-map.git#feat/csv-osm-import
+      dockerfile: Dockerfile
+      target: api
+    image: mapthecity-api:latest
+    container_name: mapthecity-api
+    restart: on-failure:5
+    environment:
+      NODE_ENV: production
+      EDITS_DIR: /data
+      SEED_DIR: /seed
+    volumes:
+      - mapthecity-edits:/data
+    networks:
+      - aeanet
+
+volumes:
+  mapthecity-edits:
+
+networks:
+  aeanet:
+    external: true

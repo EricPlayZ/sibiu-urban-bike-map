@@ -56,7 +56,7 @@ export function EditsPanel() {
                   type="button"
                   className="btn danger-ghost"
                   onClick={() => {
-                    if (window.confirm(`Ștergi toate cele ${editedEntries.length} editări din acest browser?`)) purgeAllStreetEdits();
+                    if (window.confirm(`Ștergi toate cele ${editedEntries.length} editări de pe server?`)) void purgeAllStreetEdits();
                   }}
                 >
                   Șterge tot
@@ -79,7 +79,7 @@ export function EditsPanel() {
                         title="Șterge"
                         aria-label="Șterge"
                         onClick={() => {
-                          if (window.confirm(`Ștergi editarea pentru „${streetName(id, m)}”?`)) deleteStreetEdit(id);
+                          if (window.confirm(`Ștergi editarea pentru „${streetName(id, m)}”?`)) void deleteStreetEdit(id);
                         }}
                       >
                         <Trash2 size={15} strokeWidth={2.25} />

@@ -2741,3 +2741,35 @@ html[data-theme="dark"] .csv-table th.csv-col-flag-src {
   }
 }
 
+.team-login {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--app-bg) 82%, transparent);
+}
+.team-login-card {
+  width: min(420px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 28px 24px 24px;
+}
+.team-login-card h1 {
+  margin: 0 0 8px;
+  font: 700 22px var(--font-display);
+}
+.team-login-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+.team-login-error {
+  margin: 0;
+  color: var(--accent-2);
+  font-size: 14px;
+  font-weight: 600;
+}
+

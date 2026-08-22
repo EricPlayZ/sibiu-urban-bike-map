@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../server-dist",
+    "rootDir": "..",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "lib": ["ES2022", "DOM"],
+    "noEmit": false,
+    "declaration": false
+  },
+  "include": [
+    "./**/*.ts",
+    "../src/lib/space.ts",
+    "../src/lib/streetFixes.ts",
+    "../src/lib/sheetCatalog.ts",
+    "../src/lib/buildingEdits.ts",
+    "../src/lib/localEditsFile.ts"
+  ],
+  "exclude": ["./**/*.test.ts"]
+}

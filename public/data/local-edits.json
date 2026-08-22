@@ -1,59 +1,68 @@
 {
   "version": 1,
-  "updated_at": "2026-08-22T21:01:56.455Z",
+  "updated_at": "2026-08-22T21:13:35.825Z",
   "edits": {
-    "st_dumbravii_dumbravii_24.13766_45.77058_1435": {
-      "street_id": "st_dumbravii_dumbravii_24.13766_45.77058_1435",
+    "st_dumbravii_dumbravii_24.13766_45.77058_1404": {
+      "street_id": "st_dumbravii_dumbravii_24.13766_45.77058_1404",
       "source": "local",
       "name": "Calea Dumbravii",
       "neighborhood_slug": "dumbravii",
       "row_width_m": 0,
-      "updated_at": "2026-08-16T19:31:03.998Z"
+      "bike1_m": 0,
+      "bike2_m": 0,
+      "updated_at": "2026-08-22T21:09:10.212Z"
     },
-    "st_hipodrom_dumbravii_24.14725_45.78195_2248": {
-      "street_id": "st_hipodrom_dumbravii_24.14725_45.78195_2248",
+    "st_hipodrom_dumbravii_24.14670_45.78124_2210": {
+      "street_id": "st_hipodrom_dumbravii_24.14670_45.78124_2210",
       "source": "local",
-      "name": "Calea Dumbrăvii",
+      "name": "Calea Dumbravii",
       "neighborhood_slug": "hipodrom",
+      "carriageway_m": 9.35,
+      "sidewalk1_m": 1.3,
+      "sidewalk2_m": 1.2,
       "bike1_m": 2.5,
-      "bike2_m": 2.5,
-      "updated_at": "2026-08-16T19:31:14.509Z"
+      "green1_m": 1.2,
+      "green2_m": 1,
+      "updated_at": "2026-08-22T21:10:03.026Z"
     },
-    "st_hipodrom_dumbravii_24.14780_45.78271_2249": {
-      "street_id": "st_hipodrom_dumbravii_24.14780_45.78271_2249",
+    "st_hipodrom_dumbravii_24.14725_45.78195_2211": {
+      "street_id": "st_hipodrom_dumbravii_24.14725_45.78195_2211",
       "source": "local",
-      "name": "Calea Dumbrăvii",
+      "name": "Calea Dumbravii",
       "neighborhood_slug": "hipodrom",
+      "carriageway_m": 9.35,
+      "sidewalk1_m": 1.3,
+      "sidewalk2_m": 1.2,
       "bike1_m": 2.5,
-      "bike2_m": 2.5,
-      "updated_at": "2026-08-16T19:31:18.036Z"
+      "green1_m": 1.2,
+      "green2_m": 1,
+      "updated_at": "2026-08-22T21:09:50.193Z"
     },
-    "st_hipodrom_dumbravii_24.14745_45.78220_471": {
-      "street_id": "st_hipodrom_dumbravii_24.14745_45.78220_471",
+    "st_hipodrom_dumbravii_24.14745_45.78220_456": {
+      "street_id": "st_hipodrom_dumbravii_24.14745_45.78220_456",
       "source": "local",
-      "name": "Calea Dumbrăvii",
+      "name": "Calea Dumbravii",
       "neighborhood_slug": "hipodrom",
+      "carriageway_m": 9.35,
+      "sidewalk1_m": 1.3,
+      "sidewalk2_m": 1.2,
       "bike1_m": 2.5,
-      "bike2_m": 2.5,
-      "updated_at": "2026-08-16T19:31:22.975Z"
+      "green1_m": 1.2,
+      "green2_m": 1,
+      "updated_at": "2026-08-22T21:09:47.162Z"
     },
-    "st_valea_aurie_dumbravii_24.13277_45.76573_2567": {
-      "street_id": "st_valea_aurie_dumbravii_24.13277_45.76573_2567",
+    "st_hipodrom_dumbravii_24.14780_45.78271_2212": {
+      "street_id": "st_hipodrom_dumbravii_24.14780_45.78271_2212",
       "source": "local",
-      "name": "Calea Dumbrăvii",
-      "neighborhood_slug": "valea_aurie",
+      "name": "Calea Dumbravii",
+      "neighborhood_slug": "hipodrom",
+      "carriageway_m": 9.35,
+      "sidewalk1_m": 1.3,
+      "sidewalk2_m": 1.2,
       "bike1_m": 2.5,
-      "bike2_m": 2.5,
-      "updated_at": "2026-08-16T19:31:38.720Z"
-    },
-    "st_valea_aurie_dumbravii_24.13260_45.76555_2566": {
-      "street_id": "st_valea_aurie_dumbravii_24.13260_45.76555_2566",
-      "source": "local",
-      "name": "Calea Dumbrăvii",
-      "neighborhood_slug": "valea_aurie",
-      "bike1_m": 2.5,
-      "bike2_m": 2.5,
-      "updated_at": "2026-08-16T19:31:45.501Z"
+      "green1_m": 1.2,
+      "green2_m": 1,
+      "updated_at": "2026-08-22T21:09:44.039Z"
     }
   }
 }

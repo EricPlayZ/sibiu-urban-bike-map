@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { createApi } from "./server/createApi";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const measurementsDir = path.resolve(root, "public/data/measurements");
@@ -44,92 +45,30 @@ function measurementsManifestPlugin(): Plugin {
   };
 }
 
-function localEditsWritePlugin(): Plugin {
-  const file = path.resolve(root, "public/data/local-edits.json");
+function teamApiPlugin(env: Record<string, string>): Plugin {
   return {
-    name: "local-edits-write",
+    name: "team-api",
     configureServer(server) {
-      server.middlewares.use("/__ubr/local-edits", (req, res, next) => {
-        if (req.method !== "POST") return next();
-        const chunks: Buffer[] = [];
-        req.on("data", (c) => chunks.push(c));
-        req.on("end", () => {
-          try {
-            const raw = Buffer.concat(chunks).toString("utf8");
-            const parsed = JSON.parse(raw);
-            if (!parsed || typeof parsed !== "object") throw new Error("bad json");
-            fs.mkdirSync(path.dirname(file), { recursive: true });
-            fs.writeFileSync(file, JSON.stringify(parsed, null, 2) + "\n");
-            res.statusCode = 204;
-            res.end();
-          } catch {
-            res.statusCode = 400;
-            res.end("invalid");
-          }
-        });
+      const editsDir = path.resolve(root, "public/data");
+      if (!env.EDIT_PASSWORD) {
+        console.warn("[ubr] EDIT_PASSWORD lipsește din .env.local — login-ul de echipă nu va funcționa.");
+      }
+      const handle = createApi({
+        password: env.EDIT_PASSWORD || "",
+        sessionSecret: env.SESSION_SECRET || "dev-session-secret-please-set-env-local!!",
+        publicOrigin: (env.PUBLIC_ORIGIN || "http://localhost:5500").replace(/\/$/, ""),
+        isProduction: false,
+        editsDir,
+        seedDir: editsDir,
       });
-    },
-  };
-}
-
-/** În `npm run dev`, scrie CSV-urile din editorul de măsurători. */
-function measurementsWritePlugin(): Plugin {
-  return {
-    name: "measurements-write",
-    configureServer(server) {
-      server.middlewares.use("/__ubr/measurements", (req, res, next) => {
-        if (req.method !== "POST") return next();
-        const chunks: Buffer[] = [];
-        req.on("data", (c) => chunks.push(c));
-        req.on("end", () => {
-          try {
-            const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { files?: unknown };
-            const files = parsed?.files;
-            if (!files || typeof files !== "object" || Array.isArray(files)) throw new Error("bad files");
-            fs.mkdirSync(measurementsDir, { recursive: true });
-            const dirReal = fs.realpathSync(measurementsDir);
-            for (const [slug, text] of Object.entries(files as Record<string, unknown>)) {
-              if (!/^[a-z0-9_]+$/i.test(slug) || typeof text !== "string") throw new Error("bad slug");
-              const dest = path.resolve(measurementsDir, `${slug}.csv`);
-              if (!fs.existsSync(dest)) throw new Error("unknown csv");
-              const destReal = fs.realpathSync(dest);
-              const prefix = dirReal.endsWith(path.sep) ? dirReal : dirReal + path.sep;
-              if (!destReal.toLowerCase().startsWith(prefix.toLowerCase())) throw new Error("path");
-              fs.writeFileSync(dest, text);
-            }
-            res.statusCode = 204;
-            res.end();
-          } catch {
-            res.statusCode = 400;
-            res.end("invalid");
-          }
-        });
-      });
-    },
-  };
-}
-
-function streetFixesWritePlugin(): Plugin {
-  const file = path.resolve(root, "public/data/street-fixes.json");
-  return {
-    name: "street-fixes-write",
-    configureServer(server) {
-      server.middlewares.use("/__ubr/street-fixes", (req, res, next) => {
-        if (req.method !== "POST") return next();
-        const chunks: Buffer[] = [];
-        req.on("data", (c) => chunks.push(c));
-        req.on("end", () => {
-          try {
-            const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("bad json");
-            fs.mkdirSync(path.dirname(file), { recursive: true });
-            fs.writeFileSync(file, JSON.stringify(parsed, null, 2) + "\n");
-            res.statusCode = 204;
-            res.end();
-          } catch {
-            res.statusCode = 400;
-            res.end("invalid");
-          }
+      server.middlewares.use((req, res, next) => {
+        const url = req.url || "";
+        if (!url.startsWith("/api/") && url !== "/api") {
+          next();
+          return;
+        }
+        void handle(req, res).then((ok) => {
+          if (!ok) next();
         });
       });
     },
@@ -169,15 +108,16 @@ function googleSheetProxyPlugin(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [
-    react(),
-    measurementsManifestPlugin(),
-    localEditsWritePlugin(),
-    measurementsWritePlugin(),
-    streetFixesWritePlugin(),
-    googleSheetProxyPlugin(),
-  ],
-  base: "./",
-  server: { port: 5500, host: true },
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, root, "");
+  return {
+    plugins: [
+      react(),
+      measurementsManifestPlugin(),
+      teamApiPlugin(env),
+      googleSheetProxyPlugin(),
+    ],
+    base: "./",
+    server: { port: 5500, host: true },
+  };
 });

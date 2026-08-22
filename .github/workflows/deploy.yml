@@ -26,14 +26,15 @@ jobs:
           echo "Using COMPOSE_DIR=${COMPOSE_DIR}"
           cd "${COMPOSE_DIR}"
           # Uses build.context from GitHub; GITHUB_TOKEN comes from this folder's .env
-          docker compose up -d --build --force-recreate mapthecity
+          docker compose up -d --build --force-recreate mapthecity mapthecity-api
           docker image prune -f
 
       - name: Health check
         run: |
           set -euo pipefail
           for i in 1 2 3 4 5 6 7 8 9 10; do
-            if docker exec mapthecity wget -qO- http://127.0.0.1/healthz >/dev/null; then
+            if docker exec mapthecity wget -qO- http://127.0.0.1/healthz >/dev/null \
+              && docker exec mapthecity-api node -e "fetch('http://127.0.0.1:3000/api/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
               echo "Healthy"
               exit 0
             fi
@@ -42,4 +43,5 @@ jobs:
           echo "Container did not become healthy"
           docker ps -a --filter name=mapthecity
           docker logs --tail=80 mapthecity || true
+          docker logs --tail=80 mapthecity-api || true
           exit 1

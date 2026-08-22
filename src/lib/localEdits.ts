@@ -2,14 +2,17 @@
 
 import { deriveFlagsFromWidths, type CsvStreetRow } from "./csvImport";
 import { FORM_FIELDS, hasMeaningfulLocalEdit, type Measurement } from "./space";
+import { LOCAL_EDITS_REL, parseLocalEditsFile } from "./localEditsFile";
 
-export const LOCAL_EDITS_REL = "data/local-edits.json";
-
-export type LocalEditsFile = {
-  version: 1;
-  updated_at?: string;
-  edits: Record<string, Measurement>;
-};
+export {
+  LOCAL_EDITS_REL,
+  parseLocalEditsFile,
+  parseLocalEditsDocument,
+  measurementForCommit,
+  buildLocalEditsFile,
+  serializeLocalEditsFile,
+  type LocalEditsFile,
+} from "./localEditsFile";
 
 function assetUrl(rel: string) {
   const base = import.meta.env.BASE_URL || "./";
@@ -40,57 +43,6 @@ function widthRowFromMeasurement(m: Measurement): CsvStreetRow {
     green1_m: numOrUndef(m.green1_m),
     green2_m: numOrUndef(m.green2_m),
   };
-}
-
-function normalizeEdit(sid: string, value: unknown): Measurement | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const m = value as Measurement;
-  return { ...m, street_id: sid, source: m.source || "local" };
-}
-
-/** Acceptă `{ version, edits }` sau o mapă goală `sid → Measurement`. */
-export function parseLocalEditsFile(data: unknown): Record<string, Measurement> {
-  if (!data || typeof data !== "object" || Array.isArray(data)) return {};
-  const root = data as Record<string, unknown>;
-  const raw =
-    root.edits && typeof root.edits === "object" && !Array.isArray(root.edits)
-      ? (root.edits as Record<string, unknown>)
-      : root;
-  const out: Record<string, Measurement> = {};
-  for (const [sid, value] of Object.entries(raw)) {
-    if (sid === "version" || sid === "updated_at" || sid === "edits") continue;
-    const m = normalizeEdit(sid, value);
-    if (!m || !hasMeaningfulLocalEdit(m)) continue;
-    out[sid] = m;
-  }
-  return out;
-}
-
-export function measurementForCommit(sid: string, m: Measurement): Measurement {
-  const out: Measurement = { street_id: sid, source: "local" };
-  if (m.name) out.name = m.name;
-  if (m.neighborhood_slug) out.neighborhood_slug = m.neighborhood_slug;
-  for (const f of FORM_FIELDS) {
-    const n = numOrUndef(m[f.key]);
-    if (n == null) continue;
-    (out as Record<string, unknown>)[f.key] = n;
-  }
-  if (m.illgl_park === true) out.illgl_park = true;
-  if (m.updated_at) out.updated_at = m.updated_at;
-  return out;
-}
-
-export function buildLocalEditsFile(edits: Record<string, Measurement>): LocalEditsFile {
-  const cleaned: Record<string, Measurement> = {};
-  for (const [sid, m] of Object.entries(edits)) {
-    if (!hasMeaningfulLocalEdit(m)) continue;
-    cleaned[sid] = measurementForCommit(sid, m);
-  }
-  return { version: 1, updated_at: new Date().toISOString(), edits: cleaned };
-}
-
-export function serializeLocalEditsFile(edits: Record<string, Measurement>): string {
-  return JSON.stringify(buildLocalEditsFile(edits), null, 2) + "\n";
 }
 
 /**
@@ -163,26 +115,24 @@ export function applyLocalEditsToCollection(
   };
 }
 
-export async function fetchCommittedLocalEdits(): Promise<Record<string, Measurement>> {
+async function fetchJson(url: string): Promise<unknown | null> {
   try {
-    const r = await fetch(assetUrl(LOCAL_EDITS_REL));
-    if (!r.ok) return {};
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) return null;
     const ct = r.headers.get("content-type") || "";
-    if (ct.includes("text/html")) return {};
-    return parseLocalEditsFile(await r.json());
+    if (ct.includes("text/html")) return null;
+    return await r.json();
   } catch {
-    return {};
+    return null;
   }
 }
 
-/** În `npm run dev`, scrie setul de lucru pe disk. Production: no-op. */
-export function persistLocalEditsFile(edits: Record<string, Measurement>): void {
-  if (!import.meta.env.DEV) return;
-  void fetch("/__ubr/local-edits", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: serializeLocalEditsFile(edits),
-  }).catch(() => {
-    /* silent */
-  });
+/** Preferă `/api/edits` (live); fallback la JSON-ul static. */
+export async function fetchCommittedLocalEdits(): Promise<Record<string, Measurement>> {
+  const live = await fetchJson("/api/edits");
+  if (live && typeof live === "object" && live !== null && "streets" in live) {
+    return parseLocalEditsFile((live as { streets: unknown }).streets);
+  }
+  const baked = await fetchJson(assetUrl(LOCAL_EDITS_REL));
+  return baked ? parseLocalEditsFile(baked) : {};
 }

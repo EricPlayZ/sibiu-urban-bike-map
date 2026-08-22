@@ -1,4 +1,4 @@
-import { FormEvent, useLayoutEffect, useMemo, useState, type CSSProperties } from "react";
+import { FormEvent, useEffect, useLayoutEffect, useMemo, useState, type CSSProperties } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Home, Building2, Package, HelpCircle, Pencil, X, Ruler, Road, Car, Footprints, ParkingSquare, Bike, Trees, TriangleAlert, Save, Trash2 } from "lucide-react";
 import { useApp } from "../store";
@@ -31,6 +31,10 @@ export function DetailSheet() {
     const open = useApp((s) => s.sheetOpen);
     const selected = useApp((s) => s.selected);
     const editMode = useApp((s) => s.editMode);
+    const teamAuthed = useApp((s) => s.teamAuthed);
+    const entityLock = useApp((s) => s.entityLock);
+    const refreshEntityLock = useApp((s) => s.refreshEntityLock);
+    const dropEntityLock = useApp((s) => s.dropEntityLock);
     const measurements = useApp((s) => s.measurements);
     const seedMeasurements = useApp((s) => s.seedMeasurements);
     const closeSheet = useApp((s) => s.closeSheet);
@@ -43,6 +47,18 @@ export function DetailSheet() {
     }, [selected, measurements, seedMeasurements]);
     const hasLocalEdit = selected?.kind === "street" ? Boolean(measurements[selected.id]) : false;
     const desktop = isDesktopViewport();
+    const canEdit = Boolean(editMode && teamAuthed && entityLock.held);
+    useEffect(() => {
+        if (!open || !selected || !editMode || !teamAuthed) return;
+        const kind = selected.kind;
+        const id = selected.id;
+        void refreshEntityLock(kind, id);
+        const t = window.setInterval(() => void refreshEntityLock(kind, id), 20_000);
+        return () => {
+            window.clearInterval(t);
+            void dropEntityLock(kind, id);
+        };
+    }, [open, selected, editMode, teamAuthed, refreshEntityLock, dropEntityLock]);
 
     // Scrimul se demontează imediat; panoul rămâne pe exit — fără hit-testing în timpul animației.
     useLayoutEffect(() => {
@@ -78,14 +94,14 @@ export function DetailSheet() {
                     >
                         <div className="sheet-handle" />
                         {selected.kind === "street" ? (
-                            editMode ? (
+                            canEdit ? (
                                 <StreetEditor
                                     key={selected.id}
                                     id={selected.id}
                                     name={selected.name}
                                     initial={existing}
                                     hasLocalEdit={hasLocalEdit}
-                                    onSave={(data) => saveStreet(selected.id, data)}
+                                    onSave={(data) => void saveStreet(selected.id, data)}
                                     onClose={closeSheet}
                                 />
                             ) : (
@@ -94,11 +110,12 @@ export function DetailSheet() {
                                     m={existing}
                                     props={selected.props}
                                     onClose={closeSheet}
-                                    onEditHint={() => useApp.getState().setEditMode(true)}
+                                    lockHolder={!entityLock.held ? entityLock.holder : null}
+                                    onEditHint={teamAuthed ? () => useApp.getState().setEditMode(true) : undefined}
                                 />
                             )
                         ) : (
-                            <BuildingEditor id={selected.id} type={selected.type} onPick={setBuildingType} onClose={closeSheet} editMode={editMode} />
+                            <BuildingEditor id={selected.id} type={selected.type} onPick={(id, t) => void setBuildingType(id, t)} onClose={closeSheet} editMode={canEdit} lockHolder={!entityLock.held ? entityLock.holder : null} />
                         )}
                     </motion.div>
                 )}
@@ -107,7 +124,7 @@ export function DetailSheet() {
     );
 }
 
-function StreetPublic({ name, m, props, onClose, onEditHint }: { name: string; m?: Measurement; props: Record<string, unknown>; onClose: () => void; onEditHint: () => void }) {
+function StreetPublic({ name, m, props, onClose, onEditHint, lockHolder }: { name: string; m?: Measurement; props: Record<string, unknown>; onClose: () => void; onEditHint?: () => void; lockHolder?: string | null }) {
     const schools = useApp((s) => s.schools);
     const shares = spaceShares(m);
     const bikeStatus = streetBikeLaneStatus(props, m);
@@ -148,9 +165,12 @@ function StreetPublic({ name, m, props, onClose, onEditHint }: { name: string; m
                 </>
             )}
             {!shares && m && <p className="sub">Există date parțiale, dar fără lățimi complete pentru bara de spațiu.</p>}
-            <button type="button" className="btn primary wide" onClick={onEditHint}>
-                {shares || bike || illegal || reserved || arondat ? "Editează măsurătorile" : "Pornește editarea"}
-            </button>
+            {lockHolder ? <p className="sub">{lockHolder} editează acest segment.</p> : null}
+            {onEditHint ? (
+                <button type="button" className="btn primary wide" onClick={onEditHint}>
+                    {shares || bike || illegal || reserved || arondat ? "Editează măsurătorile" : "Pornește editarea"}
+                </button>
+            ) : null}
         </div>
     );
 }
@@ -273,7 +293,7 @@ function StreetEditor({
     );
 }
 
-function BuildingEditor({ id, type, onPick, onClose, editMode }: { id: string; type: string; onPick: (id: string, t: string) => void; onClose: () => void; editMode: boolean }) {
+function BuildingEditor({ id, type, onPick, onClose, editMode, lockHolder }: { id: string; type: string; onPick: (id: string, t: string) => void; onClose: () => void; editMode: boolean; lockHolder?: string | null }) {
     const meta: Record<string, { label: string; color: string; blurb: string; Icon: typeof Home }> = {
         casa: { label: "Casă", color: "#2f9e44", blurb: "Categorie: casă", Icon: Home },
         bloc: { label: "Bloc", color: "#e03131", blurb: "Categorie: bloc", Icon: Building2 },
@@ -327,7 +347,9 @@ function BuildingEditor({ id, type, onPick, onClose, editMode }: { id: string; t
                     </div>
                 </>
             ) : (
-                <p className="sub">Pornește Editare ca să schimbi tipul clădirii.</p>
+                <p className="sub">
+                    {lockHolder ? `${lockHolder} editează această clădire.` : "Tipul se schimbă doar din modul de editare al echipei."}
+                </p>
             )}
         </div>
     );

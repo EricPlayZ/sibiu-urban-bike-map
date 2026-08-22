@@ -57,6 +57,7 @@ export function MobileDock() {
   const importReport = useApp((s) => s.importReport);
   const measurements = useApp((s) => s.measurements);
   const uiTheme = useApp((s) => s.uiTheme);
+  const teamAuthed = useApp((s) => s.teamAuthed);
   const ThemeIcon = uiTheme === "dark" ? Moon : uiTheme === "light" ? Sun : Monitor;
   const editsCount = Object.values(measurements).filter(hasAnyEdit).length;
   const dockRef = useRef<HTMLElement>(null);
@@ -113,14 +114,18 @@ export function MobileDock() {
           <Layers size={18} strokeWidth={2.25} />
           <span>Hartă</span>
         </button>
-        <button type="button" className={editMode ? "on" : ""} onClick={() => setEditMode(!editMode)} aria-pressed={editMode}>
-          <Pencil size={18} strokeWidth={2.25} />
-          <span>Edit</span>
-        </button>
-        <button type="button" className={editsOpen ? "on" : ""} onClick={toggleEdits} aria-pressed={editsOpen}>
-          <ListTree size={18} strokeWidth={2.25} />
-          <span>Editări{editsCount > 0 ? ` (${editsCount})` : ""}</span>
-        </button>
+        {teamAuthed ? (
+          <>
+            <button type="button" className={editMode ? "on" : ""} onClick={() => setEditMode(!editMode)} aria-pressed={editMode}>
+              <Pencil size={18} strokeWidth={2.25} />
+              <span>Edit</span>
+            </button>
+            <button type="button" className={editsOpen ? "on" : ""} onClick={toggleEdits} aria-pressed={editsOpen}>
+              <ListTree size={18} strokeWidth={2.25} />
+              <span>Editări{editsCount > 0 ? ` (${editsCount})` : ""}</span>
+            </button>
+          </>
+        ) : null}
         <button type="button" className={themeOpen ? "on" : ""} onClick={toggleTheme} aria-pressed={themeOpen}>
           <ThemeIcon size={18} strokeWidth={2.25} />
           <span>Temă</span>
@@ -129,15 +134,17 @@ export function MobileDock() {
           <ChartColumn size={18} strokeWidth={2.25} />
           <span>Stats</span>
         </button>
-        <button type="button" className={importReportOpen ? "on" : ""} onClick={toggleImportReport} aria-pressed={importReportOpen}>
-          <Bug size={18} strokeWidth={2.25} />
-          <span>Import{importReport ? ` (${importReport.issues.filter((i) => i.severity === "error").length})` : ""}</span>
-        </button>
-        {import.meta.env.DEV ? (
-          <button type="button" className={csvEditorOpen ? "on" : ""} onClick={toggleCsvEditor} aria-pressed={csvEditorOpen}>
-            <Table2 size={18} strokeWidth={2.25} />
-            <span>Sheets</span>
-          </button>
+        {teamAuthed ? (
+          <>
+            <button type="button" className={importReportOpen ? "on" : ""} onClick={toggleImportReport} aria-pressed={importReportOpen}>
+              <Bug size={18} strokeWidth={2.25} />
+              <span>Import{importReport ? ` (${importReport.issues.filter((i) => i.severity === "error").length})` : ""}</span>
+            </button>
+            <button type="button" className={csvEditorOpen ? "on" : ""} onClick={toggleCsvEditor} aria-pressed={csvEditorOpen}>
+              <Table2 size={18} strokeWidth={2.25} />
+              <span>Sheets</span>
+            </button>
+          </>
         ) : null}
       </div>
     </nav>

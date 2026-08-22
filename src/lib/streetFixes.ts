@@ -420,17 +420,12 @@ export function recordsHaveFix(rec: FixableStreet) {
   return Boolean(widthOverrideFromCells(rec.sheetCells, rec.cells));
 }
 
-/** În `npm run dev`, scrie `public/data/street-fixes.json`. Production: no-op. */
-export async function persistStreetFixesFile(file: StreetFixesFile): Promise<boolean> {
-  if (!import.meta.env.DEV) return false;
+/** Persistă `street-fixes.json` prin API (sesiune de echipă). */
+export async function persistStreetFixesFile(file: StreetFixesFile, ifMatch?: string): Promise<StreetFixesFile | null> {
   try {
-    const r = await fetch("/__ubr/street-fixes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: serializeStreetFixesFile({ ...file, updated_at: new Date().toISOString() }),
-    });
-    return r.ok;
+    const { putStreetFixes } = await import("./teamApi");
+    return await putStreetFixes(file, ifMatch);
   } catch {
-    return false;
+    return null;
   }
 }

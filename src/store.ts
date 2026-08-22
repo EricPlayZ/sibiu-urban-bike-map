@@ -3,22 +3,28 @@ import type { BasemapId, Measurement, ViewMode } from "./lib/space";
 import type { UiTheme } from "./lib/theme";
 import { applyDocumentTheme, basemapForTheme, defaultBasemapForTheme, loadUiTheme, resolveTheme, saveUiTheme } from "./lib/theme";
 import {
-  deleteMeasurement,
   exportAll,
-  loadBuildingTypes,
-  loadMeasurements,
-  loadRemovedSids,
-  markRemovedSid,
   migrateV1,
-  purgeAllMeasurements,
   purgeEmptyOrFlagOnlyMeasurements,
   purgeExcelSeedMeasurements,
-  saveBuildingType,
-  saveMeasurement,
-  saveRemovedSids,
-  unmarkRemovedSid,
 } from "./lib/store";
-import { applyLocalEditsToCollection, fetchCommittedLocalEdits, mergeWorkingEdits, persistLocalEditsFile } from "./lib/localEdits";
+import { applyLocalEditsToCollection, fetchCommittedLocalEdits } from "./lib/localEdits";
+import { buildingTypesFromFile, parseBuildingEditsFile, type BuildingType } from "./lib/buildingEdits";
+import {
+  acquireLock,
+  apiLogin,
+  apiLogout,
+  apiMe,
+  deleteStreet as apiDeleteStreet,
+  fetchLiveEdits,
+  fetchLiveEditsIfChanged,
+  openTeamEvents,
+  purgeStreets as apiPurgeStreets,
+  putBuilding,
+  putStreet,
+  releaseLock,
+  type TeamEvent,
+} from "./lib/teamApi";
 import { neighborhoodIsActive } from "./lib/geoAssign";
 import {
   featureHasReservedParking,
@@ -87,8 +93,13 @@ type AppState = {
   neighborhoodList: { slug: string; name: string }[];
   schoolList: { slug: string; name: string }[];
   toast: string | null;
+  teamAuthed: boolean;
+  teamName: string | null;
+  entityLock: { held: boolean; holder: string | null };
 
   init: () => Promise<void>;
+  teamLogin: (password: string, name: string) => Promise<void>;
+  teamLogout: () => Promise<void>;
   setEditMode: (v: boolean) => void;
   setViewMode: (v: ViewMode) => void;
   setLayer: (id: MapLayerId, on: boolean) => void;
@@ -122,11 +133,13 @@ type AppState = {
   selectStreet: (id: string, name: string, props: Record<string, unknown>) => void;
   selectBuilding: (id: string, type: string) => void;
   closeSheet: () => void;
-  saveStreet: (id: string, data: Measurement) => void;
-  deleteStreetEdit: (id: string) => void;
-  purgeAllStreetEdits: () => void;
+  saveStreet: (id: string, data: Measurement) => Promise<void>;
+  deleteStreetEdit: (id: string) => Promise<void>;
+  purgeAllStreetEdits: () => Promise<void>;
   openStreetEdit: (id: string) => void;
-  setBuildingType: (id: string, type: string) => void;
+  setBuildingType: (id: string, type: string) => Promise<void>;
+  refreshEntityLock: (kind: "street" | "building" | "sheets", id?: string) => Promise<boolean>;
+  dropEntityLock: (kind: "street" | "building" | "sheets", id?: string) => Promise<void>;
   ensureBuildings: () => Promise<void>;
   paintedStreets: () => GeoJSON.FeatureCollection | null;
   paintedNeighborhoods: () => GeoJSON.FeatureCollection | null;
@@ -144,8 +157,7 @@ function syncWorkingStreets(
   streets: GeoJSON.FeatureCollection | null;
   selected: Selected;
 } {
-  const measurements = mergeWorkingEdits(committed, loadMeasurements(), loadRemovedSids());
-  persistLocalEditsFile(measurements);
+  const measurements = committed;
   const streets = pipeline ? applyLocalEditsToCollection(pipeline, measurements) : null;
   let nextSelected = selected;
   if (selected?.kind === "street" && streets) {
@@ -155,6 +167,73 @@ function syncWorkingStreets(
     }
   }
   return { measurements, streets, selected: nextSelected };
+}
+
+let stopSync: (() => void) | null = null;
+let pollEtag: string | null = null;
+
+function paintBuildingTypes(buildings: GeoJSON.FeatureCollection | null, types: Record<string, { type: string }>) {
+  if (!buildings) return null;
+  for (const f of buildings.features) {
+    const id = String((f.properties as { bid?: string }).bid || "");
+    if (id && types[id]) (f.properties as { ubr_type: string }).ubr_type = types[id].type;
+  }
+  return { ...buildings, features: buildings.features.slice() };
+}
+
+function applyTeamEvent(ev: TeamEvent) {
+  const st = useApp.getState();
+  if (ev.type === "street_upsert") {
+    const committed = { ...st.committedEdits, [ev.sid]: ev.measurement };
+    useApp.setState({ committedEdits: committed, ...syncWorkingStreets(st.pipelineStreets, committed, st.selected) });
+    return;
+  }
+  if (ev.type === "street_delete") {
+    const committed = { ...st.committedEdits };
+    delete committed[ev.sid];
+    useApp.setState({ committedEdits: committed, ...syncWorkingStreets(st.pipelineStreets, committed, st.selected) });
+    return;
+  }
+  if (ev.type === "streets_purged") {
+    useApp.setState({ committedEdits: {}, ...syncWorkingStreets(st.pipelineStreets, {}, st.selected) });
+    return;
+  }
+  if (ev.type === "building_upsert") {
+    const types = { ...st.buildingTypes, [ev.id]: { type: ev.buildingType } };
+    useApp.setState({ buildingTypes: types, buildings: paintBuildingTypes(st.buildings, types) });
+    return;
+  }
+  if (ev.type === "street_fixes_updated") {
+    void st.reloadPipeline();
+  }
+}
+
+function startLiveSync(authed: boolean) {
+  stopSync?.();
+  stopSync = null;
+  if (authed) {
+    stopSync = openTeamEvents(applyTeamEvent);
+    return;
+  }
+  const tick = async () => {
+    try {
+      const next = await fetchLiveEditsIfChanged(pollEtag);
+      if (!next) return;
+      pollEtag = next.etag;
+      const st = useApp.getState();
+      const types = buildingTypesFromFile(next.buildings);
+      useApp.setState({
+        committedEdits: next.streets,
+        buildingTypes: types,
+        buildings: paintBuildingTypes(st.buildings, types),
+        ...syncWorkingStreets(st.pipelineStreets, next.streets, st.selected),
+      });
+    } catch {
+      /* ignore */
+    }
+  };
+  const id = window.setInterval(() => void tick(), 15_000);
+  stopSync = () => window.clearInterval(id);
 }
 
 export const useApp = create<AppState>((set, get) => ({
@@ -191,6 +270,9 @@ export const useApp = create<AppState>((set, get) => ({
   neighborhoodList: [],
   schoolList: [],
   toast: null,
+  teamAuthed: false,
+  teamName: null,
+  entityLock: { held: true, holder: null },
 
   showToast: (msg) => {
     set({ toast: msg });
@@ -207,15 +289,32 @@ export const useApp = create<AppState>((set, get) => ({
         .catch(() => ({ type: "FeatureCollection", features: [] })) as Promise<GeoJSON.FeatureCollection>,
     ]);
 
-    const [imported, committedEdits] = await Promise.all([runImportPipeline(limits), fetchCommittedLocalEdits()]);
+    const [imported, live, me] = await Promise.all([
+      runImportPipeline(limits),
+      fetchLiveEdits()
+        .then((v) => {
+          pollEtag = v.etag;
+          return v;
+        })
+        .catch(async () => ({
+          streets: await fetchCommittedLocalEdits(),
+          buildings: parseBuildingEditsFile(
+            await fetch("./data/building-edits.json")
+              .then((r) => (r.ok ? r.json() : {}))
+              .catch(() => ({}))
+          ),
+          etag: null,
+        })),
+      apiMe(),
+    ]);
     const pipelineStreets = imported.streets;
 
     purgeExcelSeedMeasurements();
     migrateV1(pipelineStreets);
     purgeEmptyOrFlagOnlyMeasurements();
 
-    const measurements = mergeWorkingEdits(committedEdits, loadMeasurements(), loadRemovedSids());
-    persistLocalEditsFile(measurements);
+    const committedEdits = live.streets;
+    const measurements = committedEdits;
     const streets = applyLocalEditsToCollection(pipelineStreets, measurements);
 
     const officialFeatures = (limits.features || []).filter((f) =>
@@ -251,10 +350,12 @@ export const useApp = create<AppState>((set, get) => ({
       seedMeasurements: imported.csvMeasurements,
       importReport: imported.report,
       statsOpen: true,
-      buildingTypes: loadBuildingTypes(),
+      buildingTypes: buildingTypesFromFile(live.buildings),
       schools,
       neighborhoodList,
       schoolList,
+      teamAuthed: Boolean(me),
+      teamName: me?.name ?? null,
       filters: {
         ...get().filters,
         neighborhoods: neighborhoodList.map((n) => n.slug),
@@ -264,12 +365,15 @@ export const useApp = create<AppState>((set, get) => ({
       loadingMsg: "",
     });
 
+    startLiveSync(Boolean(me));
+
     if (errorCount > 0) {
       get().showToast(`Import: ${errorCount} erori de potrivire CSV↔OSM`);
     }
   },
 
   setEditMode: (v) => {
+    if (v && !get().teamAuthed) return;
     if (v) {
       if (get().editMode) return;
       set({
@@ -289,6 +393,41 @@ export const useApp = create<AppState>((set, get) => ({
         streetsBase: restore == null ? get().layers.streetsBase : restore,
       },
     });
+  },
+  teamLogin: async (password, name) => {
+    const me = await apiLogin(password, name);
+    set({ teamAuthed: true, teamName: me.name });
+    startLiveSync(true);
+  },
+  teamLogout: async () => {
+    await apiLogout();
+    get().setEditMode(false);
+    set({
+      teamAuthed: false,
+      teamName: null,
+      csvEditorOpen: false,
+      editsOpen: false,
+      importReportOpen: false,
+      entityLock: { held: true, holder: null },
+    });
+    startLiveSync(false);
+  },
+  refreshEntityLock: async (kind, id) => {
+    if (!get().teamAuthed) {
+      set({ entityLock: { held: false, holder: null } });
+      return false;
+    }
+    const r = await acquireLock(kind, id);
+    if (r.ok) {
+      set({ entityLock: { held: true, holder: null } });
+      return true;
+    }
+    set({ entityLock: { held: false, holder: r.holder } });
+    return false;
+  },
+  dropEntityLock: async (kind, id) => {
+    await releaseLock(kind, id);
+    set({ entityLock: { held: true, holder: null } });
   },
   setViewMode: (v) => {
     const layers = { ...VIEW_PRESETS[v] };
@@ -359,10 +498,13 @@ export const useApp = create<AppState>((set, get) => ({
     set({ statsOpen: !get().statsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, editsOpen: false, importReportOpen: false, csvEditorOpen: false, searchOpen: false }),
   toggleTheme: () =>
     set({ themeOpen: !get().themeOpen, filtersOpen: false, basemapOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false, csvEditorOpen: false, searchOpen: false }),
-  toggleEdits: () =>
-    set({ editsOpen: !get().editsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, statsOpen: false, importReportOpen: false, csvEditorOpen: false, searchOpen: false }),
+  toggleEdits: () => {
+    if (!get().teamAuthed) return;
+    set({ editsOpen: !get().editsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, statsOpen: false, importReportOpen: false, csvEditorOpen: false, searchOpen: false });
+  },
   closeEdits: () => set({ editsOpen: false }),
-  toggleImportReport: () =>
+  toggleImportReport: () => {
+    if (!get().teamAuthed) return;
     set({
       importReportOpen: !get().importReportOpen,
       filtersOpen: false,
@@ -372,9 +514,11 @@ export const useApp = create<AppState>((set, get) => ({
       editsOpen: false,
       csvEditorOpen: false,
       searchOpen: false,
-    }),
+    });
+  },
   closeImportReport: () => set({ importReportOpen: false }),
-  toggleCsvEditor: () =>
+  toggleCsvEditor: () => {
+    if (!get().teamAuthed) return;
     set({
       csvEditorOpen: !get().csvEditorOpen,
       filtersOpen: false,
@@ -384,7 +528,8 @@ export const useApp = create<AppState>((set, get) => ({
       editsOpen: false,
       importReportOpen: false,
       searchOpen: false,
-    }),
+    });
+  },
   closeCsvEditor: () => set({ csvEditorOpen: false }),
   reloadPipeline: async () => {
     set({ loadingMsg: "Reîncărcăm măsurătorile…" });
@@ -460,37 +605,67 @@ export const useApp = create<AppState>((set, get) => ({
     }),
   closeSheet: () => set({ sheetOpen: false, selected: null }),
 
-  saveStreet: (id, data) => {
-    unmarkRemovedSid(id);
-    saveMeasurement(id, data);
-    set(syncWorkingStreets(get().pipelineStreets, get().committedEdits, get().selected));
-    get().showToast("Salvat pe acest segment");
+  saveStreet: async (id, data) => {
+    if (!get().teamAuthed) return;
+    try {
+      const saved = await putStreet(id, data, get().committedEdits[id]?.updated_at);
+      const committed = { ...get().committedEdits, [id]: saved };
+      set({ committedEdits: committed, ...syncWorkingStreets(get().pipelineStreets, committed, get().selected) });
+      get().showToast("Salvat pe server");
+    } catch (e) {
+      const status = e && typeof e === "object" && "status" in e ? Number((e as { status: number }).status) : 0;
+      const body = e && typeof e === "object" && "body" in e ? (e as { body: unknown }).body : null;
+      if (status === 409 && body && typeof body === "object" && body !== null && "current" in body) {
+        const overwrite = window.confirm("Pe server e o versiune mai nouă. Suprascrii?");
+        if (!overwrite) {
+          const current = (body as { current: Measurement }).current;
+          const committed = { ...get().committedEdits, [id]: current };
+          set({ committedEdits: committed, ...syncWorkingStreets(get().pipelineStreets, committed, get().selected) });
+          get().showToast("Am încărcat versiunea de pe server");
+          return;
+        }
+        const saved = await putStreet(id, data, "*");
+        const committed = { ...get().committedEdits, [id]: saved };
+        set({ committedEdits: committed, ...syncWorkingStreets(get().pipelineStreets, committed, get().selected) });
+        get().showToast("Suprascris pe server");
+        return;
+      }
+      get().showToast("Salvarea a eșuat");
+    }
   },
 
-  deleteStreetEdit: (id) => {
-    markRemovedSid(id);
-    deleteMeasurement(id);
-    const sel = get().selected;
-    const selected = sel?.kind === "street" && sel.id === id ? null : sel;
-    set({
-      ...syncWorkingStreets(get().pipelineStreets, get().committedEdits, selected),
-      ...(selected ? {} : { sheetOpen: false }),
-    });
-    get().showToast("Editare ștearsă pe acest segment");
+  deleteStreetEdit: async (id) => {
+    if (!get().teamAuthed) return;
+    try {
+      await apiDeleteStreet(id);
+      const committed = { ...get().committedEdits };
+      delete committed[id];
+      const sel = get().selected;
+      const selected = sel?.kind === "street" && sel.id === id ? null : sel;
+      set({
+        committedEdits: committed,
+        ...syncWorkingStreets(get().pipelineStreets, committed, selected),
+        ...(selected ? {} : { sheetOpen: false }),
+      });
+      get().showToast("Editare ștearsă de pe server");
+    } catch {
+      get().showToast("Ștergerea a eșuat");
+    }
   },
 
-  purgeAllStreetEdits: () => {
-    saveRemovedSids([
-      ...loadRemovedSids(),
-      ...Object.keys(get().committedEdits),
-      ...Object.keys(loadMeasurements()),
-    ]);
-    purgeAllMeasurements();
-    set({
-      ...syncWorkingStreets(get().pipelineStreets, get().committedEdits, null),
-      sheetOpen: false,
-    });
-    get().showToast("Editările din acest browser au fost golite");
+  purgeAllStreetEdits: async () => {
+    if (!get().teamAuthed) return;
+    try {
+      await apiPurgeStreets();
+      set({
+        committedEdits: {},
+        ...syncWorkingStreets(get().pipelineStreets, {}, null),
+        sheetOpen: false,
+      });
+      get().showToast("Toate editările de străzi au fost șterse de pe server");
+    } catch {
+      get().showToast("Nu am putut șterge editările");
+    }
   },
 
   openStreetEdit: (id) => {
@@ -512,16 +687,17 @@ export const useApp = create<AppState>((set, get) => ({
     });
   },
 
-  setBuildingType: (id, type) => {
-    const types = saveBuildingType(id, type);
-    const buildings = get().buildings;
-    if (buildings) {
-      for (const f of buildings.features) {
-        if ((f.properties as { bid?: string }).bid === id) (f.properties as { ubr_type: string }).ubr_type = type;
-      }
+  setBuildingType: async (id, type) => {
+    if (!get().teamAuthed) return;
+    if (type !== "casa" && type !== "bloc" && type !== "altceva" && type !== "necunoscut") return;
+    try {
+      await putBuilding(id, type as BuildingType, get().buildingTypes[id] ? "*" : undefined);
+      const types = { ...get().buildingTypes, [id]: { type } };
+      set({ buildingTypes: types, buildings: paintBuildingTypes(get().buildings, types) });
+      get().showToast(`Clădire: ${type}`);
+    } catch {
+      get().showToast("Nu am putut salva tipul clădirii");
     }
-    set({ buildingTypes: types, buildings: buildings ? { ...buildings } : null });
-    get().showToast(`Clădire: ${type}`);
   },
 
   ensureBuildings: async () => {

@@ -11,6 +11,7 @@ import {
   Pencil,
   Sun,
   ChartColumn,
+  LogOut,
   Monitor,
   GraduationCap,
   Bug,
@@ -50,6 +51,9 @@ export function TopBar() {
   const setBasemap = useApp((s) => s.setBasemap);
   const uiTheme = useApp((s) => s.uiTheme);
   const setUiTheme = useApp((s) => s.setUiTheme);
+  const teamAuthed = useApp((s) => s.teamAuthed);
+  const teamName = useApp((s) => s.teamName);
+  const teamLogout = useApp((s) => s.teamLogout);
   const editsCount = Object.values(measurements).filter(hasAnyEdit).length;
   const importErrorCount = importReport ? importReport.issues.filter((i) => i.severity === "error").length : 0;
   const importLabel = importErrorCount > 0 ? `Import (${importErrorCount})` : "Import";
@@ -106,31 +110,33 @@ export function TopBar() {
             <ChartColumn size={16} strokeWidth={2.25} aria-hidden />
             <span className="chip-label" aria-hidden>Stats</span>
           </button>
-          <button type="button" className={`chip-btn ${importReportOpen ? "on" : ""}`} onClick={toggleImportReport} title={importLabel} aria-label={importLabel} aria-pressed={importReportOpen}>
-            <Bug size={16} strokeWidth={2.25} aria-hidden />
-            <span className="chip-label" aria-hidden>{importLabel}</span>
-          </button>
-          {import.meta.env.DEV ? (
-            <button
-              type="button"
-              className={`chip-btn ${csvEditorOpen ? "on" : ""}`}
-              onClick={toggleCsvEditor}
-              title="Măsurători spreadsheet"
-              aria-label="Măsurători spreadsheet"
-              aria-pressed={csvEditorOpen}
-            >
-              <Table2 size={16} strokeWidth={2.25} aria-hidden />
-              <span className="chip-label" aria-hidden>Sheets</span>
-            </button>
+          {teamAuthed ? (
+            <>
+              <button type="button" className={`chip-btn ${importReportOpen ? "on" : ""}`} onClick={toggleImportReport} title={importLabel} aria-label={importLabel} aria-pressed={importReportOpen}>
+                <Bug size={16} strokeWidth={2.25} aria-hidden />
+                <span className="chip-label" aria-hidden>{importLabel}</span>
+              </button>
+              <button
+                type="button"
+                className={`chip-btn ${csvEditorOpen ? "on" : ""}`}
+                onClick={toggleCsvEditor}
+                title="Măsurători spreadsheet"
+                aria-label="Măsurători spreadsheet"
+                aria-pressed={csvEditorOpen}
+              >
+                <Table2 size={16} strokeWidth={2.25} aria-hidden />
+                <span className="chip-label" aria-hidden>Sheets</span>
+              </button>
+              <button type="button" className={`chip-btn ${editsOpen ? "on" : ""}`} onClick={toggleEdits} title={editsLabel} aria-label={editsLabel} aria-pressed={editsOpen}>
+                <ListTree size={16} strokeWidth={2.25} aria-hidden />
+                <span className="chip-label" aria-hidden>{editsLabel}</span>
+              </button>
+              <button type="button" className={`chip-btn edit ${editMode ? "on" : ""}`} onClick={() => setEditMode(!editMode)} title={editLabel} aria-label={editLabel} aria-pressed={editMode}>
+                <Pencil size={16} strokeWidth={2.25} aria-hidden />
+                <span className="chip-label" aria-hidden>{editLabel}</span>
+              </button>
+            </>
           ) : null}
-          <button type="button" className={`chip-btn ${editsOpen ? "on" : ""}`} onClick={toggleEdits} title={editsLabel} aria-label={editsLabel} aria-pressed={editsOpen}>
-            <ListTree size={16} strokeWidth={2.25} aria-hidden />
-            <span className="chip-label" aria-hidden>{editsLabel}</span>
-          </button>
-          <button type="button" className={`chip-btn edit ${editMode ? "on" : ""}`} onClick={() => setEditMode(!editMode)} title={editLabel} aria-label={editLabel} aria-pressed={editMode}>
-            <Pencil size={16} strokeWidth={2.25} aria-hidden />
-            <span className="chip-label" aria-hidden>{editLabel}</span>
-          </button>
         </div>
       </motion.header>
 
@@ -140,6 +146,10 @@ export function TopBar() {
             <button type="button" onClick={doExport}>
               <Download size={16} />
               Export JSON
+            </button>
+            <button type="button" onClick={() => void teamLogout()} title={teamName ? `Ieși (${teamName})` : "Ieși"}>
+              <LogOut size={16} />
+              Ieși
             </button>
           </motion.div>
         )}

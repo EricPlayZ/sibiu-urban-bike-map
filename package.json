@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:api": "tsc -p server/tsconfig.json",
     "preview": "vite preview",
     "start": "vite --host --port 5500",
     "fetch-osm": "node scripts/fetch-osm-streets.mjs",
@@ -23,6 +24,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@types/node": "^22.18.0",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",

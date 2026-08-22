@@ -31,6 +31,7 @@ import {
   type CsvEditorTable,
 } from "../lib/csvFiles";
 import { deriveStreetFixes, recordsHaveFix, type FixDrift, type StreetFixesFile } from "../lib/streetFixes";
+import { acquireLock, releaseLock } from "../lib/teamApi";
 import { LAYER_COLORS } from "../lib/space";
 import { useApp } from "../store";
 
@@ -90,6 +91,7 @@ export function CsvEditorPanel() {
   const [onlyMismatches, setOnlyMismatches] = useState(false);
   const [onlyFixes, setOnlyFixes] = useState(false);
   const [onlyOmitted, setOnlyOmitted] = useState(false);
+  const [sheetsHolder, setSheetsHolder] = useState<string | null>(null);
 
   const fileDirty = Boolean(tables && saved && csvTablesFileFingerprint(tables) !== csvTablesFileFingerprint(saved));
   const marksDirty = Boolean(
@@ -123,6 +125,29 @@ export function CsvEditorPanel() {
     // fileDirty / tables intentionally omitted: reload on each open unless unsaved edits exist
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, loadTables]);
+
+  useEffect(() => {
+    if (!open) {
+      setSheetsHolder(null);
+      return;
+    }
+    let stop = false;
+    const beat = async () => {
+      const r = await acquireLock("sheets");
+      if (stop) {
+        await releaseLock("sheets");
+        return;
+      }
+      setSheetsHolder(r.ok ? null : r.holder);
+    };
+    void beat();
+    const t = window.setInterval(() => void beat(), 20_000);
+    return () => {
+      stop = true;
+      window.clearInterval(t);
+      void releaseLock("sheets");
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!fileDirty) return;
@@ -230,23 +255,21 @@ export function CsvEditorPanel() {
   };
 
   const save = async () => {
-    if (!tables || !savedFixes || !fileDirty) return;
+    if (!tables || !savedFixes || !fileDirty || sheetsHolder) return;
     setSaving(true);
     const next = deriveStreetFixes(tablesToRecordsBySlug(tables), savedFixes);
-    const ok = await persistStreetFixesFile(next);
+    const saved = await persistStreetFixesFile(next, savedFixes.updated_at);
     setSaving(false);
-    if (!ok) {
-      showToast("Salvarea corecțiilor a eșuat — rulează `npm run dev`");
+    if (!saved) {
+      showToast("Salvarea corecțiilor a eșuat — ești autentificat?");
       return;
     }
     setSaved(cloneCsvTables(tables));
-    setSavedFixes(next);
+    setSavedFixes(saved);
     setDrift([]);
     showToast("Corecții salvate în street-fixes.json");
     await reloadPipeline();
   };
-
-  if (!import.meta.env.DEV) return null;
 
   return (
     <AnimatePresence>
@@ -268,7 +291,6 @@ export function CsvEditorPanel() {
                 <h2 id="csv-editor-title">
                   <Table2 size={18} strokeWidth={2.25} aria-hidden />
                   Măsurători spreadsheet
-                  <span className="csv-dev-badge">dev</span>
                 </h2>
                 <p className="sub">
                   Valorile sunt din Google Sheets, cu corecțiile din street-fixes.json deja aplicate. Rename / lățimi /
@@ -279,6 +301,12 @@ export function CsvEditorPanel() {
                 <X size={18} strokeWidth={2.25} />
               </button>
             </div>
+
+            {sheetsHolder ? (
+              <p className="csv-drift-banner" role="status">
+                {sheetsHolder} editează măsurătorile. Salvează e blocat până eliberează editorul.
+              </p>
+            ) : null}
 
             {drift.length > 0 ? (
               <p className="csv-drift-banner" role="status">
@@ -291,7 +319,7 @@ export function CsvEditorPanel() {
 
             <div className="csv-editor-toolbar">
               <div className="csv-editor-actions">
-                <button type="button" className="btn primary csv-editor-btn" onClick={() => void save()} disabled={!fileDirty || saving}>
+                <button type="button" className="btn primary csv-editor-btn" onClick={() => void save()} disabled={!fileDirty || saving || Boolean(sheetsHolder)}>
                   <Save size={16} strokeWidth={2.25} />
                   {saving ? "Se salvează…" : "Salvează corecții"}
                 </button>
