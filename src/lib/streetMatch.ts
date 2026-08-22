@@ -14,6 +14,7 @@ export type MatchIssueCode =
   | "osm_clipped_neighborhood"
   | "csv_parse_columns"
   | "geometry_source"
+  | "sheets_source"
   | "arondare_csv_missing"
   | "arondare_no_osm"
   | "arondare_osm_no_school"

@@ -18,6 +18,7 @@ const CODE_LABEL: Record<MatchIssueCode, string> = {
   osm_clipped_neighborhood: "Tăiat pe cartiere",
   csv_parse_columns: "Coloane CSV",
   geometry_source: "Sursă geometrie",
+  sheets_source: "Google Sheets",
   arondare_csv_missing: "CSV arondare",
   arondare_no_osm: "Arondare fără OSM",
   arondare_osm_no_school: "OSM fără școală",
@@ -136,9 +137,9 @@ export function ImportReportPanel() {
           <div className="panel-head">
             <div>
               <h2>
-                <Bug size={18} strokeWidth={2.2} /> Import CSV / OSM
+                <Bug size={18} strokeWidth={2.2} /> Import măsurători / OSM
               </h2>
-              <p className="sub">Potriviri CSV ↔ OSM și arondare școli, pe cartier și stradă.</p>
+              <p className="sub">Potriviri măsurători ↔ OSM și arondare școli, pe cartier și stradă.</p>
             </div>
             <button type="button" className="icon-x" onClick={close} aria-label="Închide">
               <X size={18} />
@@ -158,7 +159,7 @@ export function ImportReportPanel() {
               </b>
             </div>
             <div className="import-kpi">
-              <span>CSV potrivite</span>
+              <span>{report.measurementSource === "google-sheets" ? "Sheets potrivite" : "CSV potrivite"}</span>
               <b>
                 {report.matchedCsvRows}
                 <small> · {report.csvFilesLoaded.length || 0} fișiere</small>

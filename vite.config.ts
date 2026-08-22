@@ -109,8 +109,41 @@ function measurementsWritePlugin(): Plugin {
   };
 }
 
+const SHEET_ID = "1Xi_cYqgpAp45mNvv6YeNCdBSRnmpwKUE3VoyfN-cLT8";
+
+/** Proxy CSV Google Sheets în `npm run dev` (evită CORS). */
+function googleSheetProxyPlugin(): Plugin {
+  return {
+    name: "google-sheet-proxy",
+    configureServer(server) {
+      server.middlewares.use("/__ubr/google-sheet", (req, res, next) => {
+        if (req.method !== "GET") return next();
+        const url = new URL(req.url || "", "http://localhost");
+        const gid = url.searchParams.get("gid") || "";
+        if (!/^\d+$/.test(gid)) {
+          res.statusCode = 400;
+          res.end("bad gid");
+          return;
+        }
+        const target = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${gid}`;
+        fetch(target)
+          .then(async (r) => {
+            const text = await r.text();
+            res.statusCode = r.ok ? 200 : r.status;
+            res.setHeader("Content-Type", "text/csv; charset=utf-8");
+            res.end(text);
+          })
+          .catch(() => {
+            res.statusCode = 502;
+            res.end("sheet fetch failed");
+          });
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), measurementsManifestPlugin(), localEditsWritePlugin(), measurementsWritePlugin()],
+  plugins: [react(), measurementsManifestPlugin(), localEditsWritePlugin(), measurementsWritePlugin(), googleSheetProxyPlugin()],
   base: "./",
   server: { port: 5500, host: true },
 });

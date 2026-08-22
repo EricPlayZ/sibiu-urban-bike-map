@@ -1,4 +1,4 @@
-/** Pipeline: OSM local + CSV pe cartier → props + catalog + raport. Fără fallback streets.geojson. */
+/** Pipeline: OSM local + măsurători (Google Sheets, fallback CSV) → props + catalog + raport. */
 
 import {
   csvRowToMeasurement,
@@ -20,6 +20,8 @@ import {
   type NeighborhoodPoly,
 } from "./geoAssign";
 import { MEASUREMENT_CSV_SLUGS } from "./measurementsSlugs.generated";
+import { fetchGoogleSheetMeasurements } from "./sheetFetch";
+import { serializeSheetTable } from "./sheetTransform";
 import { applySchoolCatchments, type CatchmentStats } from "./schoolCatchment";
 import { makeStreetId, normalizeStreetName, type Measurement } from "./space";
 import {
@@ -42,6 +44,7 @@ const EMPTY_CATCHMENT: CatchmentStats = {
 
 export type ImportReport = {
   geometrySource: "osm-streets.geojson" | "none";
+  measurementSource: "google-sheets" | "csv" | "none";
   streetCount: number;
   assignedCount: number;
   unassignedCount: number;
@@ -156,6 +159,7 @@ function emptyReport(issues: ImportIssue[], geometrySource: ImportReport["geomet
     csvMeasurements: {},
     report: {
       geometrySource,
+      measurementSource: "none",
       streetCount: 0,
       assignedCount: 0,
       unassignedCount: 0,
@@ -170,7 +174,7 @@ function emptyReport(issues: ImportIssue[], geometrySource: ImportReport["geomet
 
 /**
  * Geometrie: doar `public/osm-streets.geojson` (generat offline cu `npm run fetch-osm`).
- * Măsurători: CSV din `public/data/measurements/` (lista e în `measurementsSlugs.generated.ts` la build/dev).
+ * Măsurători: Google Sheets (prelucrat) cu fallback la CSV din `public/data/measurements/`.
  */
 export async function runImportPipeline(limits: GeoJSON.FeatureCollection): Promise<ImportResult> {
   const issues: ImportIssue[] = [];
@@ -282,37 +286,16 @@ export async function runImportPipeline(limits: GeoJSON.FeatureCollection): Prom
   const csvFilesLoaded: string[] = [];
   const loadedCsvs: { slug: string; rows: CsvStreetRow[] }[] = [];
   const csvNameKeysBySlug = new Map<string, Set<string>>();
+  let measurementSource: ImportReport["measurementSource"] = "none";
 
-  const csvSlugs = await resolveCsvSlugs(polys.map((p) => p.slug));
-  if (!csvSlugs.length) {
-    issues.push({
-      code: "geometry_source",
-      severity: "warn",
-      detail: `Niciun CSV în lista generată (MEASUREMENT_CSV_SLUGS gol).`,
-      hint: "Adaugă public/data/measurements/{slug}.csv și repornește `npm run dev` (Vite scrie measurementsSlugs.generated.ts).",
-    });
-  }
-
-  for (const slug of csvSlugs) {
-    const text = await tryFetchCsv(`data/measurements/${slug}.csv`);
-    if (text == null) {
-      issues.push({
-        code: "csv_parse_columns",
-        severity: "error",
-        neighborhood_slug: slug,
-        detail: `CSV „${slug}” e listat dar nu s-a putut încărca / nu arată a CSV.`,
-        hint: `Verifică public/data/measurements/${slug}.csv`,
-      });
-      continue;
-    }
-
+  const ingestText = (slug: string, text: string, label: string) => {
     if (!polyBySlug.has(slug)) {
       issues.push({
         code: "csv_parse_columns",
         severity: "warn",
         neighborhood_slug: slug,
-        detail: `CSV ${slug}.csv există, dar slug-ul nu e în neighborhood_limits.geojson — potrivirea OSM pe cartier poate eșua.`,
-        hint: "Adaugă poligonul cartierului sau redenumește CSV-ul.",
+        detail: `${label} „${slug}” nu e în neighborhood_limits.geojson — potrivirea OSM pe cartier poate eșua.`,
+        hint: "Adaugă poligonul cartierului sau mapează tab-ul la slug-ul corect.",
       });
     }
 
@@ -323,7 +306,7 @@ export async function runImportPipeline(limits: GeoJSON.FeatureCollection): Prom
         code: "csv_parse_columns",
         severity: "warn",
         neighborhood_slug: slug,
-        detail: `CSV ${slug}.csv: coloane lipsă: ${missingColumns.join(", ")}.`,
+        detail: `${label} ${slug}: coloane lipsă: ${missingColumns.join(", ")}.`,
       });
     }
 
@@ -335,7 +318,7 @@ export async function runImportPipeline(limits: GeoJSON.FeatureCollection): Prom
           severity: "info",
           neighborhood_slug: slug,
           csv_name: row.name,
-          detail: `„${row.name}”: medie din ${row._mergedFrom} rânduri CSV (sufixe 1/2/…) → aplicată pe toate segmentele OSM cu acest nume.`,
+          detail: `„${row.name}”: medie din ${row._mergedFrom} rânduri (sufixe 1/2/…) → aplicată pe toate segmentele OSM cu acest nume.`,
         });
       }
     }
@@ -346,6 +329,59 @@ export async function runImportPipeline(limits: GeoJSON.FeatureCollection): Prom
     }
     csvNameKeysBySlug.set(slug, keys);
     loadedCsvs.push({ slug, rows });
+  };
+
+  try {
+    const sheets = await fetchGoogleSheetMeasurements();
+    for (const fail of sheets.failedTabs) {
+      issues.push({
+        code: "sheets_source",
+        severity: "warn",
+        detail: `Tab Google Sheets „${fail.tab}”: ${fail.detail}`,
+        hint: "Verifică că spreadsheet-ul e public (Anyone with the link).",
+      });
+    }
+    if (sheets.tables.length) {
+      measurementSource = "google-sheets";
+      for (const table of sheets.tables) {
+        ingestText(table.slug, serializeSheetTable(table), "Sheets");
+      }
+    }
+  } catch (err) {
+    issues.push({
+      code: "sheets_source",
+      severity: "warn",
+      detail: `Google Sheets indisponibil (${err instanceof Error ? err.message : String(err)}). Folosim CSV-urile locale.`,
+      hint: "https://docs.google.com/spreadsheets/d/1Xi_cYqgpAp45mNvv6YeNCdBSRnmpwKUE3VoyfN-cLT8",
+    });
+  }
+
+  if (!loadedCsvs.length) {
+    const csvSlugs = await resolveCsvSlugs(polys.map((p) => p.slug));
+    if (!csvSlugs.length) {
+      issues.push({
+        code: "geometry_source",
+        severity: "warn",
+        detail: `Nicio măsurătoare din Google Sheets și niciun CSV în lista generată.`,
+        hint: "Adaugă public/data/measurements/{slug}.csv sau deschide spreadsheet-ul public.",
+      });
+    }
+
+    for (const slug of csvSlugs) {
+      const text = await tryFetchCsv(`data/measurements/${slug}.csv`);
+      if (text == null) {
+        issues.push({
+          code: "csv_parse_columns",
+          severity: "error",
+          neighborhood_slug: slug,
+          detail: `CSV „${slug}” e listat dar nu s-a putut încărca / nu arată a CSV.`,
+          hint: `Verifică public/data/measurements/${slug}.csv`,
+        });
+        continue;
+      }
+      ingestText(slug, text, "CSV");
+    }
+    if (loadedCsvs.length) measurementSource = "csv";
   }
 
   const dataSlugsFor = (streetNameKey: string) => {
@@ -504,6 +540,7 @@ export async function runImportPipeline(limits: GeoJSON.FeatureCollection): Prom
     csvMeasurements,
     report: {
       geometrySource: "osm-streets.geojson",
+      measurementSource,
       streetCount: features.length,
       assignedCount,
       unassignedCount,
