@@ -5,5 +5,7 @@ export const MEASUREMENT_CSV_SLUGS = [
   "lazaret",
   "lupeni",
   "strand2",
-  "trei_stejari"
+  "terezian",
+  "trei_stejari",
+  "valea_aurie"
 ] as const;
