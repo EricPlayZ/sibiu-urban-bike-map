@@ -62,7 +62,7 @@ const WIDTH_KEYS = [
   "green2_m",
 ] as const;
 
-function normHeader(h: string) {
+export function normHeader(h: string) {
   return h
     .trim()
     .toLowerCase()
@@ -195,12 +195,24 @@ function splitCsvLine(line: string): string[] {
   return out;
 }
 
-export function csvRowsToMeasurements(text: string): {
-  rows: CsvStreetRow[];
-  missingColumns: string[];
-} {
-  const { headers, rows: raw } = parseCsvText(text);
-  const map = {
+export type CsvColumnMap = {
+  name: string | null;
+  row: string | null;
+  carriage: string | null;
+  sw1: string | null;
+  sw2: string | null;
+  park1: string | null;
+  park2: string | null;
+  free1: string | null;
+  free2: string | null;
+  bike1: string | null;
+  bike2: string | null;
+  green1: string | null;
+  green2: string | null;
+};
+
+export function csvColumnMap(headers: string[]): CsvColumnMap {
+  return {
     name: findCol(headers, COL.name),
     row: findCol(headers, COL.row),
     carriage: findCol(headers, COL.carriage),
@@ -215,6 +227,66 @@ export function csvRowsToMeasurements(text: string): {
     green1: findCol(headers, COL.green1),
     green2: findCol(headers, COL.green2),
   };
+}
+
+export function rawRecordToCsvStreetRow(r: Record<string, string>, map: CsvColumnMap): CsvStreetRow {
+  const get = (col: string | null) => (col ? parseNum(r[col]) : undefined);
+  return {
+    name: map.name ? String(r[map.name] || "").trim() : "",
+    row_width_m: get(map.row),
+    carriageway_m: get(map.carriage),
+    sidewalk1_m: get(map.sw1),
+    sidewalk2_m: get(map.sw2),
+    parking1_m: get(map.park1),
+    parking2_m: get(map.park2),
+    free_sidewalk1_m: get(map.free1),
+    free_sidewalk2_m: get(map.free2),
+    bike1_m: get(map.bike1),
+    bike2_m: get(map.bike2),
+    green1_m: get(map.green1),
+    green2_m: get(map.green2),
+  };
+}
+
+export function flagsFromRawRecord(headers: string[], record: Record<string, string>): DerivedFlags {
+  return deriveFlagsFromWidths(rawRecordToCsvStreetRow(record, csvColumnMap(headers)));
+}
+
+function escapeCsvCell(v: string): string {
+  if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+  return v;
+}
+
+/** Serializează tabelul păstrând toate coloanele (inclusiv extra, ex. zonă verde între benzi). */
+export function serializeCsvText(headers: string[], rows: Record<string, string>[]): string {
+  const lines = [headers.map(escapeCsvCell).join(",")];
+  for (const row of rows) {
+    lines.push(headers.map((h) => escapeCsvCell(row[h] ?? "")).join(","));
+  }
+  return lines.join("\n") + "\n";
+}
+
+/** Coloanele din care se derivă parcare ilegală / amenajată. */
+export function isParkingFlagHeader(header: string): boolean {
+  const n = normHeader(header);
+  return n.includes("parcare") || n.includes("parking") || n.includes("zona libera") || n.includes("free_sidewalk");
+}
+
+export type ParkingMark = "none" | "illegal" | "reserved";
+
+/** Marcajul galben/roșu e așteptarea; flag-urile vin doar din lățimi. */
+export function parkingMarkMatchesFlags(mark: ParkingMark, flags: DerivedFlags): boolean {
+  if (mark === "illegal") return flags.illgl_park;
+  if (mark === "reserved") return flags.rsrvd_park;
+  return !flags.illgl_park && !flags.rsrvd_park;
+}
+
+export function csvRowsToMeasurements(text: string): {
+  rows: CsvStreetRow[];
+  missingColumns: string[];
+} {
+  const { headers, rows: raw } = parseCsvText(text);
+  const map = csvColumnMap(headers);
 
   const missingColumns: string[] = [];
   if (!map.name) missingColumns.push("Nume");
@@ -224,24 +296,9 @@ export function csvRowsToMeasurements(text: string): {
 
   const rows: CsvStreetRow[] = [];
   for (const r of raw) {
-    const name = map.name ? String(r[map.name] || "").trim() : "";
-    if (!name) continue;
-    const get = (key: keyof typeof map) => (map[key] ? parseNum(r[map[key]!]) : undefined);
-    rows.push({
-      name,
-      row_width_m: get("row"),
-      carriageway_m: get("carriage"),
-      sidewalk1_m: get("sw1"),
-      sidewalk2_m: get("sw2"),
-      parking1_m: get("park1"),
-      parking2_m: get("park2"),
-      free_sidewalk1_m: get("free1"),
-      free_sidewalk2_m: get("free2"),
-      bike1_m: get("bike1"),
-      bike2_m: get("bike2"),
-      green1_m: get("green1"),
-      green2_m: get("green2"),
-    });
+    const row = rawRecordToCsvStreetRow(r, map);
+    if (!row.name) continue;
+    rows.push(row);
   }
   return { rows, missingColumns };
 }

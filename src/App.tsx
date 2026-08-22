@@ -4,6 +4,7 @@ import { TopBar } from "./components/TopBar";
 import { FiltersPanel } from "./components/FiltersPanel";
 import { StatsPanel } from "./components/StatsPanel";
 import { EditsPanel } from "./components/EditsPanel";
+import { CsvEditorPanel } from "./components/CsvEditorPanel";
 import { DetailSheet } from "./components/DetailSheet";
 import { ImportReportPanel } from "./components/ImportReportPanel";
 import { Loader, MobileDock, Toast } from "./components/Chrome";
@@ -37,6 +38,7 @@ export default function App() {
       <FiltersPanel />
       <StatsPanel />
       <EditsPanel />
+      {import.meta.env.DEV ? <CsvEditorPanel /> : null}
       <ImportReportPanel />
       <DetailSheet />
       <MobileDock />

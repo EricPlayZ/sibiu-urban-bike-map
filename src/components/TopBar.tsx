@@ -14,6 +14,7 @@ import {
   Monitor,
   GraduationCap,
   Bug,
+  Table2,
 } from "lucide-react";
 import { useApp } from "../store";
 import { SearchControl } from "./SearchControl";
@@ -34,12 +35,14 @@ export function TopBar() {
   const toggleTheme = useApp((s) => s.toggleTheme);
   const toggleEdits = useApp((s) => s.toggleEdits);
   const toggleImportReport = useApp((s) => s.toggleImportReport);
+  const toggleCsvEditor = useApp((s) => s.toggleCsvEditor);
   const filtersOpen = useApp((s) => s.filtersOpen);
   const basemapOpen = useApp((s) => s.basemapOpen);
   const themeOpen = useApp((s) => s.themeOpen);
   const statsOpen = useApp((s) => s.statsOpen);
   const editsOpen = useApp((s) => s.editsOpen);
   const importReportOpen = useApp((s) => s.importReportOpen);
+  const csvEditorOpen = useApp((s) => s.csvEditorOpen);
   const importReport = useApp((s) => s.importReport);
   const measurements = useApp((s) => s.measurements);
   const doExport = useApp((s) => s.doExport);
@@ -107,6 +110,19 @@ export function TopBar() {
             <Bug size={16} strokeWidth={2.25} aria-hidden />
             <span className="chip-label" aria-hidden>{importLabel}</span>
           </button>
+          {import.meta.env.DEV ? (
+            <button
+              type="button"
+              className={`chip-btn ${csvEditorOpen ? "on" : ""}`}
+              onClick={toggleCsvEditor}
+              title="Măsurători CSV"
+              aria-label="Măsurători CSV"
+              aria-pressed={csvEditorOpen}
+            >
+              <Table2 size={16} strokeWidth={2.25} aria-hidden />
+              <span className="chip-label" aria-hidden>CSV</span>
+            </button>
+          ) : null}
           <button type="button" className={`chip-btn ${editsOpen ? "on" : ""}`} onClick={toggleEdits} title={editsLabel} aria-label={editsLabel} aria-pressed={editsOpen}>
             <ListTree size={16} strokeWidth={2.25} aria-hidden />
             <span className="chip-label" aria-hidden>{editsLabel}</span>

@@ -72,8 +72,45 @@ function localEditsWritePlugin(): Plugin {
   };
 }
 
+/** În `npm run dev`, scrie CSV-urile din editorul de măsurători. */
+function measurementsWritePlugin(): Plugin {
+  return {
+    name: "measurements-write",
+    configureServer(server) {
+      server.middlewares.use("/__ubr/measurements", (req, res, next) => {
+        if (req.method !== "POST") return next();
+        const chunks: Buffer[] = [];
+        req.on("data", (c) => chunks.push(c));
+        req.on("end", () => {
+          try {
+            const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { files?: unknown };
+            const files = parsed?.files;
+            if (!files || typeof files !== "object" || Array.isArray(files)) throw new Error("bad files");
+            fs.mkdirSync(measurementsDir, { recursive: true });
+            const dirReal = fs.realpathSync(measurementsDir);
+            for (const [slug, text] of Object.entries(files as Record<string, unknown>)) {
+              if (!/^[a-z0-9_]+$/i.test(slug) || typeof text !== "string") throw new Error("bad slug");
+              const dest = path.resolve(measurementsDir, `${slug}.csv`);
+              if (!fs.existsSync(dest)) throw new Error("unknown csv");
+              const destReal = fs.realpathSync(dest);
+              const prefix = dirReal.endsWith(path.sep) ? dirReal : dirReal + path.sep;
+              if (!destReal.toLowerCase().startsWith(prefix.toLowerCase())) throw new Error("path");
+              fs.writeFileSync(dest, text);
+            }
+            res.statusCode = 204;
+            res.end();
+          } catch {
+            res.statusCode = 400;
+            res.end("invalid");
+          }
+        });
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), measurementsManifestPlugin(), localEditsWritePlugin()],
+  plugins: [react(), measurementsManifestPlugin(), localEditsWritePlugin(), measurementsWritePlugin()],
   base: "./",
   server: { port: 5500, host: true },
 });

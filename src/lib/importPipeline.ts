@@ -77,9 +77,9 @@ async function tryFetchJson(url: string): Promise<GeoJSON.FeatureCollection | nu
   }
 }
 
-async function tryFetchText(url: string): Promise<string | null> {
+async function tryFetchText(url: string, init?: RequestInit): Promise<string | null> {
   try {
-    const r = await fetch(assetUrl(url));
+    const r = await fetch(assetUrl(url), init);
     if (!r.ok) return null;
     const ct = r.headers.get("content-type") || "";
     if (ct.includes("text/html")) return null;
@@ -90,7 +90,7 @@ async function tryFetchText(url: string): Promise<string | null> {
 }
 
 async function tryFetchCsv(url: string): Promise<string | null> {
-  const text = await tryFetchText(url);
+  const text = await tryFetchText(url, { cache: "no-store" });
   if (text == null || !looksLikeMeasurementCsv(text)) return null;
   return text;
 }

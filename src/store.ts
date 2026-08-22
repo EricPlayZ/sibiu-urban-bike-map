@@ -66,6 +66,7 @@ type AppState = {
   themeOpen: boolean;
   editsOpen: boolean;
   importReportOpen: boolean;
+  csvEditorOpen: boolean;
   searchOpen: boolean;
   searchFocus: SearchFocus | null;
   sheetOpen: boolean;
@@ -111,6 +112,9 @@ type AppState = {
   closeEdits: () => void;
   toggleImportReport: () => void;
   closeImportReport: () => void;
+  toggleCsvEditor: () => void;
+  closeCsvEditor: () => void;
+  reloadPipeline: () => Promise<void>;
   toggleSearch: () => void;
   closeSearch: () => void;
   focusSearchResult: (hit: SearchHit) => void;
@@ -169,6 +173,7 @@ export const useApp = create<AppState>((set, get) => ({
   themeOpen: false,
   editsOpen: false,
   importReportOpen: false,
+  csvEditorOpen: false,
   searchOpen: false,
   searchFocus: null,
   sheetOpen: false,
@@ -345,17 +350,17 @@ export const useApp = create<AppState>((set, get) => ({
     set({ filters: { ...get().filters, schools: allOn ? [] : list } });
   },
   toggleFilters: () =>
-    set({ filtersOpen: !get().filtersOpen, basemapOpen: false, themeOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false, searchOpen: false }),
+    set({ filtersOpen: !get().filtersOpen, basemapOpen: false, themeOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false, csvEditorOpen: false, searchOpen: false }),
   closeFilters: () => set({ filtersOpen: false }),
   closeStats: () => set({ statsOpen: false }),
   toggleBasemap: () =>
-    set({ basemapOpen: !get().basemapOpen, filtersOpen: false, themeOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false, searchOpen: false }),
+    set({ basemapOpen: !get().basemapOpen, filtersOpen: false, themeOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false, csvEditorOpen: false, searchOpen: false }),
   toggleStats: () =>
-    set({ statsOpen: !get().statsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, editsOpen: false, importReportOpen: false, searchOpen: false }),
+    set({ statsOpen: !get().statsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, editsOpen: false, importReportOpen: false, csvEditorOpen: false, searchOpen: false }),
   toggleTheme: () =>
-    set({ themeOpen: !get().themeOpen, filtersOpen: false, basemapOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false, searchOpen: false }),
+    set({ themeOpen: !get().themeOpen, filtersOpen: false, basemapOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false, csvEditorOpen: false, searchOpen: false }),
   toggleEdits: () =>
-    set({ editsOpen: !get().editsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, statsOpen: false, importReportOpen: false, searchOpen: false }),
+    set({ editsOpen: !get().editsOpen, filtersOpen: false, basemapOpen: false, themeOpen: false, statsOpen: false, importReportOpen: false, csvEditorOpen: false, searchOpen: false }),
   closeEdits: () => set({ editsOpen: false }),
   toggleImportReport: () =>
     set({
@@ -365,9 +370,42 @@ export const useApp = create<AppState>((set, get) => ({
       themeOpen: false,
       statsOpen: false,
       editsOpen: false,
+      csvEditorOpen: false,
       searchOpen: false,
     }),
   closeImportReport: () => set({ importReportOpen: false }),
+  toggleCsvEditor: () =>
+    set({
+      csvEditorOpen: !get().csvEditorOpen,
+      filtersOpen: false,
+      basemapOpen: false,
+      themeOpen: false,
+      statsOpen: false,
+      editsOpen: false,
+      importReportOpen: false,
+      searchOpen: false,
+    }),
+  closeCsvEditor: () => set({ csvEditorOpen: false }),
+  reloadPipeline: async () => {
+    set({ loadingMsg: "Reîncărcăm măsurătorile…" });
+    try {
+      const limits = (await fetch("./neighborhood_limits.geojson").then((r) => r.json())) as GeoJSON.FeatureCollection;
+      const imported = await runImportPipeline(limits);
+      const pipelineStreets = imported.streets;
+      const synced = syncWorkingStreets(pipelineStreets, get().committedEdits, get().selected);
+      set({
+        pipelineStreets,
+        seedMeasurements: imported.csvMeasurements,
+        importReport: imported.report,
+        loadingMsg: "",
+        ...synced,
+      });
+    } catch (e) {
+      console.error(e);
+      set({ loadingMsg: "" });
+      get().showToast("Nu am putut reîncărca harta după CSV");
+    }
+  },
   toggleSearch: () =>
     set({
       searchOpen: !get().searchOpen,
@@ -377,6 +415,7 @@ export const useApp = create<AppState>((set, get) => ({
       statsOpen: false,
       editsOpen: false,
       importReportOpen: false,
+      csvEditorOpen: false,
     }),
   closeSearch: () => set({ searchOpen: false }),
   focusSearchResult: (hit) =>
@@ -389,6 +428,7 @@ export const useApp = create<AppState>((set, get) => ({
       statsOpen: false,
       editsOpen: false,
       importReportOpen: false,
+      csvEditorOpen: false,
     }),
   clearSearchFocus: () => set({ searchFocus: null }),
 
@@ -402,6 +442,7 @@ export const useApp = create<AppState>((set, get) => ({
       editsOpen: false,
       statsOpen: false,
       importReportOpen: false,
+      csvEditorOpen: false,
       searchOpen: false,
     }),
   selectBuilding: (id, type) =>
@@ -414,6 +455,7 @@ export const useApp = create<AppState>((set, get) => ({
       editsOpen: false,
       statsOpen: false,
       importReportOpen: false,
+      csvEditorOpen: false,
       searchOpen: false,
     }),
   closeSheet: () => set({ sheetOpen: false, selected: null }),
@@ -465,6 +507,7 @@ export const useApp = create<AppState>((set, get) => ({
       themeOpen: false,
       statsOpen: false,
       editsOpen: false,
+      csvEditorOpen: false,
       searchOpen: false,
     });
   },

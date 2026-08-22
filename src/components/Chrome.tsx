@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef } from "react";
-import { Bike, Building2, Bug, ChartColumn, Filter, GraduationCap, Layers, ListTree, Monitor, Moon, Pencil, Sun } from "lucide-react";
+import { Bike, Building2, Bug, ChartColumn, Filter, GraduationCap, Layers, ListTree, Monitor, Moon, Pencil, Sun, Table2 } from "lucide-react";
 import { useApp } from "../store";
 import { layersMatchPreset } from "../lib/layers";
 import { hasAnyEdit } from "../lib/space";
@@ -46,12 +46,14 @@ export function MobileDock() {
   const toggleTheme = useApp((s) => s.toggleTheme);
   const toggleEdits = useApp((s) => s.toggleEdits);
   const toggleImportReport = useApp((s) => s.toggleImportReport);
+  const toggleCsvEditor = useApp((s) => s.toggleCsvEditor);
   const themeOpen = useApp((s) => s.themeOpen);
   const filtersOpen = useApp((s) => s.filtersOpen);
   const basemapOpen = useApp((s) => s.basemapOpen);
   const statsOpen = useApp((s) => s.statsOpen);
   const editsOpen = useApp((s) => s.editsOpen);
   const importReportOpen = useApp((s) => s.importReportOpen);
+  const csvEditorOpen = useApp((s) => s.csvEditorOpen);
   const importReport = useApp((s) => s.importReport);
   const measurements = useApp((s) => s.measurements);
   const uiTheme = useApp((s) => s.uiTheme);
@@ -131,6 +133,12 @@ export function MobileDock() {
           <Bug size={18} strokeWidth={2.25} />
           <span>Import{importReport ? ` (${importReport.issues.filter((i) => i.severity === "error").length})` : ""}</span>
         </button>
+        {import.meta.env.DEV ? (
+          <button type="button" className={csvEditorOpen ? "on" : ""} onClick={toggleCsvEditor} aria-pressed={csvEditorOpen}>
+            <Table2 size={18} strokeWidth={2.25} />
+            <span>CSV</span>
+          </button>
+        ) : null}
       </div>
     </nav>
   );

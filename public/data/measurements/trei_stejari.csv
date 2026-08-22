@@ -1,4 +1,4 @@
-﻿Nume,Latime trama stradala,Latime carosabil,Latime trotuar 1,Latime trotuar 2,Latime parcare 1,Latime parcare 2,Zona libera trotuar 1,Zona libera trotuar 2,Latime pista biciclete 1,Latime pista biciclete 2,Zona verde 1,Zona verde 2
+Nume,Latime trama stradala,Latime carosabil,Latime trotuar 1,Latime trotuar 2,Latime parcare 1,Latime parcare 2,Zona libera trotuar 1,Zona libera trotuar 2,Latime pista biciclete 1,Latime pista biciclete 2,Zona verde 1,Zona verde 2
 Axente Sever,8.6,5.6,1.4,1.6,,,0.6,0.8,,,,
 Balea,16.5,12,1.9,2.6,,,,,0.9,1,,
 Bucegi,10.1,5.7,2.4,2,,,0.9,,,,,
@@ -10,15 +10,12 @@ Constantin Noica,10.6,7.2,1.9,1.5,,,,,,,1.6,1.4
 Constantin (Costache) Negruzzi,13.9,7.5,3.1,3.3,1.3,1.3,,,,,,
 Depoului,8.6,6.1,1.2,1.3,,,0.6,0.6,,,,
 Diaconul Coressi,10.3,6.2,1.9,2.2,,,0.8,1.6,,,,
-Fabricii,0,,,,,,,,,,,
 Fochistilor,9.9,6,2,2.2,,,1.1,1.4,,,,
 Fratii Grachi,13.7,8.6,2.6,2.5,,,,,,,,
 Galileo Galilei,8.1,5.6,1.1,1.4,,,0.5,0.8,,,,
 George Enescu,9.9,5.7,2.1,2.1,,,1,1.2,,,,
 Gheorghe Titeica,9.3,5.6,1.8,1.9,,,,,,,,
-Ghetariei,0,,,,,,,,,,,
 Georg Wilhelm Friedrich Hegel,13.9,9,2.3,2.6,0.8,0.8,,,,,,
-Independentei,0,,,,,,,,,,,
 Ion Creanga,9.7,6.1,1.8,1.8,,,1.2,0.6,,,,
 Izvorului,8,6,2,,,,,,,,,
 James Watt,9.85,6,1.85,2,,,0.9,0.9,,,,
