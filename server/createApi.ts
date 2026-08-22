@@ -6,6 +6,7 @@ import {
   clientIp,
   cookieHeader,
   createRateLimiter,
+  createSessionRevocation,
   csrfOk,
   newSession,
   passwordsMatch,
@@ -33,6 +34,7 @@ export function createApi(config: ApiConfig) {
   const locks = createLockTable();
   const sse = createSseHub();
   const limiter = createRateLimiter();
+  const revoked = createSessionRevocation();
   const ping = setInterval(() => sse.ping(), 15_000);
   ping.unref?.();
 
@@ -42,8 +44,14 @@ export function createApi(config: ApiConfig) {
     return false;
   }
 
-  function requireSession(req: IncomingMessage, res: ServerResponse): Session | null {
+  function liveSession(req: IncomingMessage): Session | null {
     const session = sessionFromRequest(req, config.sessionSecret);
+    if (!session || revoked.isRevoked(session.sid)) return null;
+    return session;
+  }
+
+  function requireSession(req: IncomingMessage, res: ServerResponse): Session | null {
+    const session = liveSession(req);
     if (session) return session;
     sendJson(res, 401, { error: "unauthorized" });
     return null;
@@ -69,15 +77,23 @@ export function createApi(config: ApiConfig) {
           return true;
         }
         if (!requireCsrf(req, res)) return true;
-        if (!limiter.allowLogin(clientIp(req))) {
-          sendJson(res, 429, { error: "too_many" });
+        const ip = clientIp(req);
+        const flood = limiter.floodBlocked(ip);
+        if (flood.blocked) {
+          sendTooMany(res, flood.retryAfterSec);
           return true;
         }
         const body = JSON.parse((await readBody(req, 4096)).toString("utf8") || "{}") as { password?: unknown; name?: unknown };
         if (!passwordsMatch(body.password, config.password)) {
+          const fail = limiter.recordFailure(ip);
+          if (fail.blocked) {
+            sendTooMany(res, fail.retryAfterSec);
+            return true;
+          }
           sendJson(res, 401, { error: "unauthorized" });
           return true;
         }
+        limiter.reset(ip);
         const session = newSession(sanitizeDisplayName(body.name));
         const token = signSession(session, config.sessionSecret);
         res.setHeader("Set-Cookie", cookieHeader(token, config.isProduction));
@@ -87,13 +103,15 @@ export function createApi(config: ApiConfig) {
 
       if (path === "/api/logout" && method === "POST") {
         if (!requireCsrf(req, res)) return true;
+        const session = liveSession(req);
+        if (session) revoked.revoke(session.sid, session.exp);
         res.setHeader("Set-Cookie", clearCookieHeader(config.isProduction));
         sendJson(res, 200, { ok: true });
         return true;
       }
 
       if (path === "/api/me" && method === "GET") {
-        const session = sessionFromRequest(req, config.sessionSecret);
+        const session = liveSession(req);
         if (!session) {
           sendJson(res, 401, { error: "unauthorized" });
           return true;
@@ -262,6 +280,11 @@ export function createApi(config: ApiConfig) {
   }
 
   return handle;
+}
+
+function sendTooMany(res: ServerResponse, retryAfterSec: number) {
+  res.setHeader("Retry-After", String(retryAfterSec));
+  sendJson(res, 429, { error: "too_many", retryAfterSec });
 }
 
 function headerMatch(req: IncomingMessage): string | undefined {

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createApi, type ApiConfig } from "./createApi";
 import { originAllowed } from "./config";
 import { isSafeId } from "./ids";
-import { passwordsMatch, sanitizeDisplayName, signSession, verifySession } from "./auth";
+import { LOGIN_MAX_FAILURES, passwordsMatch, sanitizeDisplayName, signSession, verifySession } from "./auth";
 
 const ORIGIN = "https://map.example";
 
@@ -54,7 +54,7 @@ describe("auth helpers", () => {
   });
   it("round-trips signed sessions", () => {
     const secret = "s".repeat(32);
-    const token = signSession({ sid: "abc", name: "Ana", exp: Date.now() + 60_000 }, secret);
+    const token = signSession({ sid: "a".repeat(32), name: "Ana", exp: Date.now() + 60_000 }, secret);
     expect(verifySession(token, secret)?.name).toBe("Ana");
     expect(verifySession(token, "other-secret-other-secret-other!!")).toBeNull();
   });
@@ -257,4 +257,218 @@ describe("team api", () => {
       server.close();
     }
   });
+
+  function loginHeaders(extra?: Record<string, string>) {
+    return { Origin: ORIGIN, "Content-Type": "application/json", ...extra };
+  }
+
+  async function login(url: string, password: string, name = "Ana", extra?: Record<string, string>) {
+    return fetch(`${url}/api/login`, {
+      method: "POST",
+      headers: loginHeaders(extra),
+      body: JSON.stringify({ password, name }),
+    });
+  }
+
+  it("lets the correct password through after several failures (no 429 on success)", async () => {
+    const { server, url } = await boot();
+    try {
+      for (let i = 0; i < 5; i++) {
+        const bad = await login(url, "wrong-password");
+        expect(bad.status).toBe(401);
+      }
+      const ok = await login(url, "test-password-12");
+      expect(ok.status).toBe(200);
+      expect((await ok.json()).name).toBe("Ana");
+      const setCookie = ok.headers.get("set-cookie") || "";
+      expect(setCookie).toMatch(/HttpOnly/i);
+      expect(setCookie).toMatch(/SameSite=Lax/i);
+      expect(setCookie).toMatch(/Secure/i);
+      expect(setCookie).toMatch(/Path=\//i);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("returns 429 only for further wrong guesses; the real password still signs in", async () => {
+    const { server, url } = await boot();
+    try {
+      for (let i = 0; i < LOGIN_MAX_FAILURES; i++) {
+        expect((await login(url, "wrong-password")).status).toBe(401);
+      }
+      const locked = await login(url, "still-wrong");
+      expect(locked.status).toBe(429);
+      expect(locked.headers.get("retry-after")).toBeTruthy();
+      const body = (await locked.json()) as { error: string; retryAfterSec: number };
+      expect(body.error).toBe("too_many");
+      expect(body.retryAfterSec).toBeGreaterThan(0);
+
+      const ok = await login(url, "test-password-12", "Bogdan");
+      expect(ok.status).toBe(200);
+      expect((await ok.json()).name).toBe("Bogdan");
+    } finally {
+      server.close();
+    }
+  });
+
+  it("isolates login failures per client IP", async () => {
+    const { server, url } = await boot();
+    try {
+      for (let i = 0; i < LOGIN_MAX_FAILURES; i++) {
+        expect((await login(url, "wrong-password", "Ana", { "X-Real-IP": "10.1.1.1" })).status).toBe(401);
+      }
+      expect((await login(url, "wrong-password", "Ana", { "X-Real-IP": "10.1.1.1" })).status).toBe(429);
+      expect((await login(url, "wrong-password", "Ana", { "X-Real-IP": "10.1.1.2" })).status).toBe(401);
+      expect((await login(url, "test-password-12", "Ana", { "X-Real-IP": "10.1.1.2" })).status).toBe(200);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("rejects login without Origin in production", async () => {
+    const { server, url } = await boot();
+    try {
+      const r = await fetch(`${url}/api/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: "test-password-12", name: "Ana" }),
+      });
+      expect(r.status).toBe(403);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("accepts Referer when Origin is missing", async () => {
+    const { server, url } = await boot();
+    try {
+      const r = await fetch(`${url}/api/login`, {
+        method: "POST",
+        headers: { Referer: `${ORIGIN}/echipa`, "Content-Type": "application/json" },
+        body: JSON.stringify({ password: "test-password-12", name: "Ana" }),
+      });
+      expect(r.status).toBe(200);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("rejects expired and tampered session cookies", async () => {
+    const { server, url } = await boot();
+    try {
+      const expired = signSession({ sid: "ab".repeat(16), name: "Ana", exp: Date.now() - 1000 }, "s".repeat(32));
+      const meExpired = await fetch(`${url}/api/me`, { headers: { Cookie: `ubr_session=${expired}` } });
+      expect(meExpired.status).toBe(401);
+
+      const loginRes = await login(url, "test-password-12");
+      const cookie = cookieFrom(loginRes);
+      const tampered = cookie.replace(/.$/, cookie.endsWith("a") ? "b" : "a");
+      const meBad = await fetch(`${url}/api/me`, { headers: { Cookie: tampered } });
+      expect(meBad.status).toBe(401);
+
+      const meOk = await fetch(`${url}/api/me`, { headers: { Cookie: cookie } });
+      expect(meOk.status).toBe(200);
+
+      const events = await fetch(`${url}/api/events`);
+      expect(events.status).toBe(401);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("requires CSRF origin on authenticated writes even with a cookie", async () => {
+    const { server, url } = await boot();
+    try {
+      const loginRes = await login(url, "test-password-12");
+      const cookie = cookieFrom(loginRes);
+      const r = await fetch(`${url}/api/edits/streets/st_1`, {
+        method: "PUT",
+        headers: { Origin: "https://evil.example", "Content-Type": "application/json", Cookie: cookie },
+        body: JSON.stringify({ carriageway_m: 7, source: "local" }),
+      });
+      expect(r.status).toBe(403);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("logout revokes the session cookie", async () => {
+    const { server, url } = await boot();
+    try {
+      const loginRes = await login(url, "test-password-12");
+      const cookie = cookieFrom(loginRes);
+      const out = await fetch(`${url}/api/logout`, {
+        method: "POST",
+        headers: { Origin: ORIGIN, "Content-Type": "application/json", Cookie: cookie },
+        body: "{}",
+      });
+      expect(out.status).toBe(200);
+      const clear = out.headers.get("set-cookie") || "";
+      expect(clear).toMatch(/Max-Age=0/i);
+      const me = await fetch(`${url}/api/me`, { headers: { Cookie: cookie } });
+      expect(me.status).toBe(401);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("rejects oversized login bodies and overlong passwords", async () => {
+    const { server, url } = await boot();
+    try {
+      const huge = await fetch(`${url}/api/login`, {
+        method: "POST",
+        headers: loginHeaders(),
+        body: "x".repeat(5000),
+      });
+      expect(huge.status).toBe(413);
+      const longPw = await login(url, "p".repeat(300));
+      expect(longPw.status).toBe(401);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("GET /api/edits is public; building PUT is not", async () => {
+    const { server, url } = await boot();
+    try {
+      const pub = await fetch(`${url}/api/edits`);
+      expect(pub.status).toBe(200);
+      const anon = await fetch(`${url}/api/edits/buildings/b_1`, {
+        method: "PUT",
+        headers: loginHeaders(),
+        body: JSON.stringify({ type: "casa" }),
+      });
+      expect(anon.status).toBe(401);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("drops prototype keys in street-fixes without polluting Object.prototype", async () => {
+    const { server, url } = await boot();
+    try {
+      const loginRes = await login(url, "test-password-12");
+      const protoKey = "__proto__";
+      const payload = {
+        version: 1,
+        renames: { [protoKey]: { polluted: "yes" }, centru: { ok_street: "Ok" } },
+        omit: {},
+        widths: {},
+        baselines: {},
+      };
+      const r = await fetch(`${url}/api/edits/street-fixes`, {
+        method: "PUT",
+        headers: { Origin: ORIGIN, "Content-Type": "application/json", Cookie: cookieFrom(loginRes) },
+        body: JSON.stringify(payload),
+      });
+      expect(r.status).toBe(200);
+      const saved = (await r.json()) as { renames: Record<string, Record<string, string>> };
+      expect(saved.renames.centru.ok_street).toBe("Ok");
+      expect(Object.prototype.hasOwnProperty("polluted")).toBe(false);
+      expect(({} as { polluted?: string }).polluted).toBeUndefined();
+    } finally {
+      server.close();
+    }
+  });
 });
+

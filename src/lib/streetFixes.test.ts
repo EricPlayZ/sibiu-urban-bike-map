@@ -189,6 +189,23 @@ describe("deriveStreetFixes", () => {
   });
 });
 
+describe("parseStreetFixesFile security", () => {
+  it("ignores __proto__ / constructor keys", () => {
+    const parsed = parseStreetFixesFile({
+      version: 1,
+      renames: { __proto__: { polluted: "yes" }, centru: { strada: "Strada" } },
+      omit: { constructor: ["x"] },
+      widths: { prototype: { y: { carriageway_m: 3 } } },
+      baselines: {},
+    });
+    expect(parsed.renames.centru.strada).toBe("Strada");
+    expect(Object.prototype.hasOwnProperty("polluted")).toBe(false);
+    expect(({} as { polluted?: string }).polluted).toBeUndefined();
+    expect(Object.hasOwn(parsed.renames, "__proto__")).toBe(false);
+    expect(Object.hasOwn(parsed.omit, "constructor")).toBe(false);
+  });
+});
+
 describe("committed street-fixes baselines", () => {
   it("match the current sheet fixtures (no stale/orphan drift)", () => {
     const fixes = loadStreetFixes();

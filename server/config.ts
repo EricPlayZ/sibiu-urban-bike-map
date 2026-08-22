@@ -12,11 +12,19 @@ export type ApiConfig = {
 const MIN_PASSWORD_PROD = 12;
 const MIN_SECRET = 32;
 
+function envStr(key: string): string {
+  let s = (process.env[key] || "").replace(/^\uFEFF/, "").replace(/\r/g, "").trim();
+  if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) {
+    s = s.slice(1, -1);
+  }
+  return s;
+}
+
 export function loadConfigFromEnv(): ApiConfig {
   const isProduction = process.env.NODE_ENV === "production";
-  const password = process.env.EDIT_PASSWORD || "";
-  let sessionSecret = process.env.SESSION_SECRET || "";
-  const publicOrigin = (process.env.PUBLIC_ORIGIN || "").replace(/\/$/, "");
+  const password = envStr("EDIT_PASSWORD");
+  let sessionSecret = envStr("SESSION_SECRET");
+  const publicOrigin = envStr("PUBLIC_ORIGIN").replace(/\/$/, "");
   const editsDir = process.env.EDITS_DIR || (isProduction ? "/data" : "");
   const seedDir = process.env.SEED_DIR || (isProduction ? "/seed" : undefined);
 

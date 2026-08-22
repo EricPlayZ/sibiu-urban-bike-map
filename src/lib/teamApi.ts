@@ -51,6 +51,33 @@ export async function apiLogin(password: string, name: string): Promise<{ name: 
   })) as { name: string };
 }
 
+function retryAfterSec(body: unknown): number {
+  if (body && typeof body === "object" && "retryAfterSec" in body) {
+    const n = Number((body as { retryAfterSec: unknown }).retryAfterSec);
+    if (Number.isFinite(n) && n > 0) return Math.ceil(n);
+  }
+  return 0;
+}
+
+export function loginFailureMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 429) {
+      const sec = retryAfterSec(err.body);
+      if (sec >= 60) {
+        const min = Math.max(1, Math.ceil(sec / 60));
+        return `Prea multe parole greșite. Așteaptă ${min} min, apoi încearcă din nou.`;
+      }
+      if (sec > 0) return `Prea multe încercări. Așteaptă ${sec}s.`;
+      return "Prea multe încercări. Așteaptă puțin și încearcă din nou.";
+    }
+    if (err.status === 403) {
+      return "Cererea a fost respinsă. Deschide site-ul pe adresa oficială și reîncearcă.";
+    }
+    if (err.status === 401) return "Parolă greșită.";
+  }
+  return "Serverul nu e disponibil. Încearcă din nou.";
+}
+
 export async function apiLogout() {
   try {
     await req("/api/logout", { method: "POST", headers: jsonHeaders, body: "{}" });

@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import { loginFailureMessage } from "../lib/teamApi";
 import { useApp } from "../store";
 
 export function TeamLogin() {
@@ -24,8 +25,8 @@ export function TeamLogin() {
       await login(password, name);
       setPassword("");
       goMap();
-    } catch {
-      setError("Parolă greșită sau serverul nu e disponibil.");
+    } catch (err) {
+      setError(loginFailureMessage(err));
     } finally {
       setBusy(false);
     }

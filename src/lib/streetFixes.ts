@@ -79,7 +79,13 @@ const HEADER_TO_WIDTH = Object.fromEntries(
 ) as Record<string, WidthField>;
 
 export function emptyStreetFixes(): StreetFixesFile {
-  return { version: 1, renames: {}, omit: {}, widths: {}, baselines: {} };
+  return {
+    version: 1,
+    renames: Object.create(null),
+    omit: Object.create(null),
+    widths: Object.create(null),
+    baselines: Object.create(null),
+  };
 }
 
 export function baseFixKey(key: string) {
@@ -122,6 +128,10 @@ export function widthFingerprint(cells: Record<string, string> | undefined): Rec
   return out;
 }
 
+function isForbiddenKey(key: string) {
+  return key === "__proto__" || key === "constructor" || key === "prototype";
+}
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return Boolean(v) && typeof v === "object" && !Array.isArray(v);
 }
@@ -143,8 +153,11 @@ function parseWidthOverride(raw: unknown): WidthOverride {
 }
 
 function sortRecord<T>(obj: Record<string, T>): Record<string, T> {
-  const out: Record<string, T> = {};
-  for (const k of Object.keys(obj).sort((a, b) => a.localeCompare(b))) out[k] = obj[k];
+  const out: Record<string, T> = Object.create(null);
+  for (const k of Object.keys(obj).sort((a, b) => a.localeCompare(b))) {
+    if (isForbiddenKey(k)) continue;
+    out[k] = obj[k];
+  }
   return out;
 }
 
@@ -155,9 +168,10 @@ export function parseStreetFixesFile(raw: unknown): StreetFixesFile {
 
   if (isPlainObject(raw.renames)) {
     for (const [slug, map] of Object.entries(raw.renames)) {
-      if (!isPlainObject(map)) continue;
-      const next: Record<string, string> = {};
+      if (isForbiddenKey(slug) || !isPlainObject(map)) continue;
+      const next: Record<string, string> = Object.create(null);
       for (const [key, name] of Object.entries(map)) {
+        if (isForbiddenKey(key)) continue;
         if (typeof name === "string" && name.trim()) next[key] = name.trim();
       }
       if (Object.keys(next).length) file.renames[slug] = sortRecord(next);
@@ -166,17 +180,20 @@ export function parseStreetFixesFile(raw: unknown): StreetFixesFile {
 
   if (isPlainObject(raw.omit)) {
     for (const [slug, list] of Object.entries(raw.omit)) {
-      if (!Array.isArray(list)) continue;
-      const keys = [...new Set(list.map((k) => String(k || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      if (isForbiddenKey(slug) || !Array.isArray(list)) continue;
+      const keys = [
+        ...new Set(list.map((k) => String(k || "").trim()).filter((k) => k && !isForbiddenKey(k))),
+      ].sort((a, b) => a.localeCompare(b));
       if (keys.length) file.omit[slug] = keys;
     }
   }
 
   if (isPlainObject(raw.widths)) {
     for (const [slug, map] of Object.entries(raw.widths)) {
-      if (!isPlainObject(map)) continue;
-      const next: Record<string, WidthOverride> = {};
+      if (isForbiddenKey(slug) || !isPlainObject(map)) continue;
+      const next: Record<string, WidthOverride> = Object.create(null);
       for (const [key, override] of Object.entries(map)) {
+        if (isForbiddenKey(key)) continue;
         const parsed = parseWidthOverride(override);
         if (Object.keys(parsed).length) next[key] = parsed;
       }
@@ -186,14 +203,14 @@ export function parseStreetFixesFile(raw: unknown): StreetFixesFile {
 
   if (isPlainObject(raw.baselines)) {
     for (const [slug, map] of Object.entries(raw.baselines)) {
-      if (!isPlainObject(map)) continue;
-      const next: Record<string, StreetFixBaseline> = {};
+      if (isForbiddenKey(slug) || !isPlainObject(map)) continue;
+      const next: Record<string, StreetFixBaseline> = Object.create(null);
       for (const [key, baseline] of Object.entries(map)) {
-        if (!isPlainObject(baseline) || typeof baseline.sheetName !== "string") continue;
+        if (isForbiddenKey(key) || !isPlainObject(baseline) || typeof baseline.sheetName !== "string") continue;
         const widths = isPlainObject(baseline.widths)
           ? Object.fromEntries(
               Object.entries(baseline.widths)
-                .filter(([, v]) => typeof v === "string")
+                .filter(([h, v]) => !isForbiddenKey(h) && typeof v === "string")
                 .map(([h, v]) => [h, String(v)])
             )
           : {};

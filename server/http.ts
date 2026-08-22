@@ -19,20 +19,33 @@ export function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let n = 0;
+    let done = false;
+
+    const finish = (err?: Error, buf?: Buffer) => {
+      if (done) return;
+      done = true;
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onErr);
+      if (err) reject(err);
+      else resolve(buf ?? Buffer.alloc(0));
+    };
+
     const onData = (c: Buffer) => {
       n += c.length;
       if (n > maxBytes) {
-        req.off("data", onData);
-        const err = new Error("too_large");
-        reject(err);
-        req.destroy();
+        req.resume();
+        finish(new Error("too_large"));
         return;
       }
       chunks.push(c);
     };
+    const onEnd = () => finish(undefined, Buffer.concat(chunks));
+    const onErr = (e: Error) => finish(e);
+
     req.on("data", onData);
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
+    req.on("end", onEnd);
+    req.on("error", onErr);
   });
 }
 
