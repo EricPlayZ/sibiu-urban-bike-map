@@ -1,13 +1,40 @@
 /** Fetch live din Google Sheets (dev: proxy Vite; production: gviz CSV). */
 
 import { googleSheetCsvUrl, SHEET_TABS, type SheetTab } from "./sheetCatalog";
-import { mergeSheetTabs, serializeSheetTable, type TransformedSheetTable } from "./sheetTransform";
+import {
+  editorHeadersFor,
+  mergeSheetRecords,
+  recordsBySlugMap,
+  recordsToTable,
+  serializeSheetTable,
+  type NeighborhoodRecords,
+  type SheetStreetRecord,
+  type TransformedSheetTable,
+} from "./sheetTransform";
+import {
+  detectFixDrift,
+  emptyStreetFixes,
+  parseStreetFixesFile,
+  persistStreetFixesFile as persistStreetFixes,
+  type FixDrift,
+  type StreetFixesFile,
+} from "./streetFixes";
 
 export type SheetLoadResult = {
   tables: TransformedSheetTable[];
+  groups: NeighborhoodRecords[];
   loadedTabs: { tab: string; slug: string }[];
   failedTabs: { tab: string; detail: string }[];
+  fixes: StreetFixesFile;
+  drift: FixDrift[];
 };
+
+function assetUrl(rel: string) {
+  const base = import.meta.env.BASE_URL || "./";
+  const b = base.endsWith("/") ? base : `${base}/`;
+  const r = rel.replace(/^\.\//, "").replace(/^\//, "");
+  return `${b}${r}`;
+}
 
 function tabFetchUrl(tab: SheetTab) {
   if (import.meta.env.DEV) return `/__ubr/google-sheet?gid=${encodeURIComponent(tab.gid)}`;
@@ -22,13 +49,28 @@ async function fetchTabCsv(tab: SheetTab): Promise<string> {
   return text;
 }
 
+export async function fetchStreetFixesFile(): Promise<StreetFixesFile> {
+  try {
+    const r = await fetch(assetUrl("data/street-fixes.json"), { cache: "no-store" });
+    if (!r.ok) return emptyStreetFixes();
+    return parseStreetFixesFile(await r.json());
+  } catch {
+    return emptyStreetFixes();
+  }
+}
+
+export { persistStreetFixes as persistStreetFixesFile };
+
 export async function fetchGoogleSheetMeasurements(): Promise<SheetLoadResult> {
-  const settled = await Promise.allSettled(
-    SHEET_TABS.map(async (tab) => {
-      const text = await fetchTabCsv(tab);
-      return { tab, text };
-    })
-  );
+  const [fixes, settled] = await Promise.all([
+    fetchStreetFixesFile(),
+    Promise.allSettled(
+      SHEET_TABS.map(async (tab) => {
+        const text = await fetchTabCsv(tab);
+        return { tab, text };
+      })
+    ),
+  ]);
 
   const parts: { neighborhoodSlug: string; text: string }[] = [];
   const loadedTabs: SheetLoadResult["loadedTabs"] = [];
@@ -47,10 +89,14 @@ export async function fetchGoogleSheetMeasurements(): Promise<SheetLoadResult> {
     }
   });
 
+  const groups = mergeSheetRecords(parts, fixes);
   return {
-    tables: mergeSheetTabs(parts),
+    tables: groups.map((g) => recordsToTable(g.slug, g.records)),
+    groups,
     loadedTabs,
     failedTabs,
+    fixes,
+    drift: detectFixDrift(recordsBySlugMap(groups), fixes),
   };
 }
 
@@ -58,4 +104,21 @@ export function sheetTablesToCsvFiles(tables: TransformedSheetTable[]): Record<s
   const files: Record<string, string> = {};
   for (const t of tables) files[t.slug] = serializeSheetTable(t);
   return files;
+}
+
+export function recordsToEditorRows(records: SheetStreetRecord[], newId: () => string) {
+  const headers = editorHeadersFor(records);
+  return {
+    headers,
+    rows: records.map((rec) => ({
+      id: newId(),
+      cells: Object.fromEntries(headers.map((h) => [h, rec.cells[h] ?? (h === "Nume" ? rec.displayName : "")])),
+      mark: "none" as const,
+      uniqueKey: rec.uniqueKey,
+      baseKey: rec.baseKey,
+      sheetName: rec.sheetName,
+      sheetCells: { ...rec.sheetCells },
+      omitted: rec.omitted,
+    })),
+  };
 }

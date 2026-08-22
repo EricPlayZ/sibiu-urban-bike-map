@@ -2,30 +2,24 @@
 
 import { csvRowsToMeasurements, parseCsvText, serializeCsvText, type CsvStreetRow } from "./csvImport";
 import { GREEN_MID_HEADER, MEASUREMENT_CSV_HEADERS } from "./sheetCatalog";
-import {
-  DROP_EMPTY_WIDTH_SLUGS,
-  OMIT_STREETS,
-  STREET_RENAMES,
-  WIDTH_OVERRIDES,
-  type WidthField,
-  type WidthOverride,
-} from "./sheetStreetFixes";
 import { slugify } from "./space";
+import {
+  applyWidthOverride,
+  cellHasWidth,
+  DROP_EMPTY_WIDTH_SLUGS,
+  emptyStreetFixes,
+  formatWidth,
+  isOmitted,
+  lookupRename,
+  lookupWidths,
+  parseSheetNumber,
+  rowHasAnyMappedWidth,
+  sameWidthCell,
+  type FixableStreet,
+  type StreetFixesFile,
+} from "./streetFixes";
 
-const WIDTH_TO_HEADER: Record<WidthField, (typeof MEASUREMENT_CSV_HEADERS)[number]> = {
-  row_width_m: "Latime trama stradala",
-  carriageway_m: "Latime carosabil",
-  sidewalk1_m: "Latime trotuar 1",
-  sidewalk2_m: "Latime trotuar 2",
-  parking1_m: "Latime parcare 1",
-  parking2_m: "Latime parcare 2",
-  free_sidewalk1_m: "Zona libera trotuar 1",
-  free_sidewalk2_m: "Zona libera trotuar 2",
-  bike1_m: "Latime pista biciclete 1",
-  bike2_m: "Latime pista biciclete 2",
-  green1_m: "Zona verde 1",
-  green2_m: "Zona verde 2",
-};
+export { parseSheetNumber } from "./streetFixes";
 
 const ROMAN: Record<string, string> = { I: "1", II: "2", III: "3", IV: "4" };
 
@@ -182,41 +176,6 @@ export function fixKey(name: string) {
   return slugify(cleanSheetStreetName(name));
 }
 
-function formatWidth(n: number | undefined | null): string {
-  if (n == null || !Number.isFinite(n)) return "";
-  if (n === 0) return "0";
-  return String(n);
-}
-
-export function parseSheetNumber(v: string | undefined): number | undefined {
-  if (v == null) return undefined;
-  let t = String(v).trim();
-  if (!t || t === "-----" || t === "-" || t === "—" || /^#/i.test(t)) return undefined;
-  t = t.replace(/\s/g, "").replace(",", ".");
-  if (!t) return undefined;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-function cellHasWidth(v: string) {
-  const n = parseSheetNumber(v);
-  return n != null;
-}
-
-function applyOverride(cells: Record<string, string>, override: WidthOverride | undefined) {
-  if (!override) return;
-  for (const [field, value] of Object.entries(override) as [WidthField, number | null][]) {
-    const header = WIDTH_TO_HEADER[field];
-    cells[header] = value == null ? "" : formatWidth(value);
-  }
-}
-
-export type TransformedSheetTable = {
-  slug: string;
-  headers: string[];
-  rows: Record<string, string>[];
-};
-
 function emptyWidthRow(name: string): Record<string, string> {
   const cells: Record<string, string> = { Nume: name };
   for (const h of MEASUREMENT_CSV_HEADERS) {
@@ -225,22 +184,10 @@ function emptyWidthRow(name: string): Record<string, string> {
   return cells;
 }
 
-function recordFromSheetRow(
-  raw: Record<string, string>,
-  map: Partial<Record<SheetCol, string>>,
-  neighborhoodSlug: string
-): Record<string, string> | null {
-  const rawName = map.name ? String(raw[map.name] || "").trim() : "";
-  if (isJunkSheetName(rawName)) return null;
-  const cleaned = cleanSheetStreetName(rawName);
-  if (!cleaned) return null;
-  const key = fixKey(cleaned);
-  if ((OMIT_STREETS[neighborhoodSlug] || []).includes(key)) return null;
-
-  const renamed = STREET_RENAMES[neighborhoodSlug]?.[key] || cleaned;
+function cellsFromMappedRow(raw: Record<string, string>, map: Partial<Record<SheetCol, string>>, name: string) {
   const get = (col: SheetCol) => (map[col] ? parseSheetNumber(raw[map[col]!]) : undefined);
   const cells: Record<string, string> = {
-    Nume: renamed,
+    Nume: name,
     "Latime trama stradala": formatWidth(get("row")),
     "Latime carosabil": formatWidth(get("carriage")),
     "Latime trotuar 1": formatWidth(get("sw1")),
@@ -255,63 +202,148 @@ function recordFromSheetRow(
     "Zona verde 2": formatWidth(get("green2")),
   };
   if (map.green_mid) cells[GREEN_MID_HEADER] = formatWidth(get("green_mid"));
-  applyOverride(cells, WIDTH_OVERRIDES[neighborhoodSlug]?.[key]);
-
-  const hasWidth = MEASUREMENT_CSV_HEADERS.slice(1).some((h) => cellHasWidth(cells[h])) || cellHasWidth(cells[GREEN_MID_HEADER] || "");
-  if (!hasWidth && DROP_EMPTY_WIDTH_SLUGS.has(neighborhoodSlug)) return null;
   return cells;
 }
 
-export function transformSheetTab(text: string, neighborhoodSlug: string): Record<string, string>[] {
+type RawSheetStreet = {
+  baseKey: string;
+  sheetName: string;
+  sheetCells: Record<string, string>;
+};
+
+function rawFromName(name: string, sheetCells: Record<string, string>): RawSheetStreet | null {
+  const cleaned = cleanSheetStreetName(name);
+  if (!cleaned || isJunkSheetName(cleaned)) return null;
+  return { baseKey: fixKey(cleaned), sheetName: cleaned, sheetCells: { ...sheetCells, Nume: cleaned } };
+}
+
+/** Un tab → rânduri brute (fără rename/omit/override). */
+export function parseSheetTabRaw(text: string): RawSheetStreet[] {
   const { headers, rows } = parseSheetCsv(text);
   const map = mapSheetHeaders(headers);
-  const out: Record<string, string>[] = [];
+  const out: RawSheetStreet[] = [];
   const nameHeader = map.name || headers[0] || "";
   for (const extra of leadingNamesFromHeader(nameHeader)) {
-    if (isJunkSheetName(extra)) continue;
-    const cleaned = cleanSheetStreetName(extra);
-    const key = fixKey(cleaned);
-    if ((OMIT_STREETS[neighborhoodSlug] || []).includes(key)) continue;
-    const renamed = STREET_RENAMES[neighborhoodSlug]?.[key] || cleaned;
-    const cells = emptyWidthRow(renamed);
-    applyOverride(cells, WIDTH_OVERRIDES[neighborhoodSlug]?.[key]);
-    const hasWidth = MEASUREMENT_CSV_HEADERS.slice(1).some((h) => cellHasWidth(cells[h]));
-    if (!hasWidth && DROP_EMPTY_WIDTH_SLUGS.has(neighborhoodSlug)) continue;
-    out.push(cells);
+    const raw = rawFromName(extra, emptyWidthRow(cleanSheetStreetName(extra)));
+    if (raw) out.push(raw);
   }
-  for (const raw of rows) {
-    const cells = recordFromSheetRow(raw, map, neighborhoodSlug);
-    if (cells) out.push(cells);
+  for (const row of rows) {
+    const rawName = map.name ? String(row[map.name] || "").trim() : "";
+    if (isJunkSheetName(rawName)) continue;
+    const cleaned = cleanSheetStreetName(rawName);
+    if (!cleaned) continue;
+    const cells = cellsFromMappedRow(row, map, cleaned);
+    const raw = rawFromName(cleaned, cells);
+    if (raw) out.push(raw);
   }
   return out;
 }
 
-export function mergeSheetTabs(parts: { neighborhoodSlug: string; text: string }[]): TransformedSheetTable[] {
-  const grouped = new Map<string, Record<string, string>[]>();
+export function uniquifyRecords(raw: RawSheetStreet[]): FixableStreet[] {
+  const counts = new Map<string, number>();
+  return raw.map((row) => {
+    const n = (counts.get(row.baseKey) || 0) + 1;
+    counts.set(row.baseKey, n);
+    const uniqueKey = n === 1 ? row.baseKey : `${row.baseKey}#${n}`;
+    return {
+      uniqueKey,
+      baseKey: row.baseKey,
+      sheetName: row.sheetName,
+      displayName: row.sheetName,
+      sheetCells: { ...row.sheetCells },
+      cells: { ...row.sheetCells },
+      omitted: false,
+    };
+  });
+}
+
+export function applyStreetFixes(records: FixableStreet[], slug: string, fixes: StreetFixesFile): FixableStreet[] {
+  return records.map((rec) => {
+    const renamed = lookupRename(fixes, slug, rec.uniqueKey);
+    const displayName = renamed || rec.sheetName;
+    const cells = { ...rec.sheetCells, Nume: displayName };
+    applyWidthOverride(cells, lookupWidths(fixes, slug, rec.uniqueKey));
+    return {
+      ...rec,
+      displayName,
+      cells,
+      omitted: isOmitted(fixes, slug, rec.uniqueKey),
+    };
+  });
+}
+
+export function dropEmptyPolicy(records: FixableStreet[], slug: string): FixableStreet[] {
+  if (!DROP_EMPTY_WIDTH_SLUGS.has(slug)) return records;
+  return records.filter((rec) => rec.omitted || rowHasAnyMappedWidth(rec.cells));
+}
+
+export type SheetStreetRecord = FixableStreet;
+
+export type NeighborhoodRecords = {
+  slug: string;
+  records: SheetStreetRecord[];
+  tabCount: number;
+};
+
+export type TransformedSheetTable = {
+  slug: string;
+  headers: string[];
+  rows: Record<string, string>[];
+};
+
+export function recordsToTable(slug: string, records: SheetStreetRecord[]): TransformedSheetTable {
+  const live = records.filter((r) => !r.omitted);
+  const hasMid = live.some((r) => cellHasWidth(r.cells[GREEN_MID_HEADER]));
+  const headers = hasMid ? [...MEASUREMENT_CSV_HEADERS, GREEN_MID_HEADER] : [...MEASUREMENT_CSV_HEADERS];
+  const rows = live.map((r) => {
+    const cells: Record<string, string> = {};
+    for (const h of headers) cells[h] = r.cells[h] ?? "";
+    return cells;
+  });
+  return { slug, headers, rows };
+}
+
+export function editorHeadersFor(records: SheetStreetRecord[]): string[] {
+  const hasMid = records.some((r) => cellHasWidth(r.cells[GREEN_MID_HEADER]) || cellHasWidth(r.sheetCells[GREEN_MID_HEADER]));
+  return hasMid ? [...MEASUREMENT_CSV_HEADERS, GREEN_MID_HEADER] : [...MEASUREMENT_CSV_HEADERS];
+}
+
+export function mergeSheetRecords(
+  parts: { neighborhoodSlug: string; text: string }[],
+  fixes: StreetFixesFile = emptyStreetFixes()
+): NeighborhoodRecords[] {
+  const grouped = new Map<string, RawSheetStreet[]>();
   const tabCount = new Map<string, number>();
   for (const part of parts) {
-    const rows = transformSheetTab(part.text, part.neighborhoodSlug);
+    const rows = parseSheetTabRaw(part.text);
     const list = grouped.get(part.neighborhoodSlug) || [];
     list.push(...rows);
     grouped.set(part.neighborhoodSlug, list);
     tabCount.set(part.neighborhoodSlug, (tabCount.get(part.neighborhoodSlug) || 0) + 1);
   }
 
-  const tables: TransformedSheetTable[] = [];
-  for (const [slug, rows] of grouped) {
-    const merged = tabCount.get(slug)! > 1
-      ? [...rows].sort((a, b) => String(a.Nume).localeCompare(String(b.Nume), "ro"))
-      : rows;
-    const hasMid = merged.some((r) => cellHasWidth(r[GREEN_MID_HEADER] || ""));
-    const headers = hasMid ? [...MEASUREMENT_CSV_HEADERS, GREEN_MID_HEADER] : [...MEASUREMENT_CSV_HEADERS];
-    const normalized = merged.map((r) => {
-      const cells: Record<string, string> = {};
-      for (const h of headers) cells[h] = r[h] ?? "";
-      return cells;
-    });
-    tables.push({ slug, headers, rows: normalized });
+  const out: NeighborhoodRecords[] = [];
+  for (const [slug, raw] of grouped) {
+    let records = dropEmptyPolicy(applyStreetFixes(uniquifyRecords(raw), slug, fixes), slug);
+    if (tabCount.get(slug)! > 1) {
+      records = [...records].sort((a, b) => a.displayName.localeCompare(b.displayName, "ro"));
+    }
+    out.push({ slug, records, tabCount: tabCount.get(slug) || 1 });
   }
-  return tables.sort((a, b) => a.slug.localeCompare(b.slug));
+  return out.sort((a, b) => a.slug.localeCompare(b.slug));
+}
+
+export function mergeSheetTabs(
+  parts: { neighborhoodSlug: string; text: string }[],
+  fixes: StreetFixesFile = emptyStreetFixes()
+): TransformedSheetTable[] {
+  return mergeSheetRecords(parts, fixes).map((n) => recordsToTable(n.slug, n.records));
+}
+
+export function recordsBySlugMap(groups: NeighborhoodRecords[]): Record<string, SheetStreetRecord[]> {
+  const out: Record<string, SheetStreetRecord[]> = {};
+  for (const g of groups) out[g.slug] = g.records;
+  return out;
 }
 
 export function serializeSheetTable(table: TransformedSheetTable) {
@@ -320,13 +352,6 @@ export function serializeSheetTable(table: TransformedSheetTable) {
 
 export function sheetTableToCsvStreetRows(table: TransformedSheetTable): CsvStreetRow[] {
   return csvRowsToMeasurements(serializeSheetTable(table)).rows;
-}
-
-function sameWidthCell(a: string, b: string) {
-  const na = parseSheetNumber(a);
-  const nb = parseSheetNumber(b);
-  if (na == null && nb == null) return true;
-  return na === nb;
 }
 
 /** Compară tabele prelucrate cu un CSV existent (fără coloana Cartier). */

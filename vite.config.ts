@@ -109,6 +109,33 @@ function measurementsWritePlugin(): Plugin {
   };
 }
 
+function streetFixesWritePlugin(): Plugin {
+  const file = path.resolve(root, "public/data/street-fixes.json");
+  return {
+    name: "street-fixes-write",
+    configureServer(server) {
+      server.middlewares.use("/__ubr/street-fixes", (req, res, next) => {
+        if (req.method !== "POST") return next();
+        const chunks: Buffer[] = [];
+        req.on("data", (c) => chunks.push(c));
+        req.on("end", () => {
+          try {
+            const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("bad json");
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, JSON.stringify(parsed, null, 2) + "\n");
+            res.statusCode = 204;
+            res.end();
+          } catch {
+            res.statusCode = 400;
+            res.end("invalid");
+          }
+        });
+      });
+    },
+  };
+}
+
 const SHEET_ID = "1Xi_cYqgpAp45mNvv6YeNCdBSRnmpwKUE3VoyfN-cLT8";
 
 /** Proxy CSV Google Sheets în `npm run dev` (evită CORS). */
@@ -143,7 +170,14 @@ function googleSheetProxyPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), measurementsManifestPlugin(), localEditsWritePlugin(), measurementsWritePlugin(), googleSheetProxyPlugin()],
+  plugins: [
+    react(),
+    measurementsManifestPlugin(),
+    localEditsWritePlugin(),
+    measurementsWritePlugin(),
+    streetFixesWritePlugin(),
+    googleSheetProxyPlugin(),
+  ],
   base: "./",
   server: { port: 5500, host: true },
 });

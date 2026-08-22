@@ -1,0 +1,575 @@
+{
+  "version": 1,
+  "renames": {
+    "centru": {
+      "avocat_macelaru_ilie": "Avocat Ilie Macelaru",
+      "bdul_victoriei_1": "Bulevardul Victoriei 1",
+      "bdul_victoriei_2": "Bulevardul Victoriei 2"
+    },
+    "dumbravii": {
+      "anghel_dimitrie": "Dimitrie Anghel",
+      "general_traian_mosoiu": "General Mosoiu",
+      "johan_wolfgang_goethe": "J.W. Goethe",
+      "vasile_alexandri_1": "Vasile Alecsandri 1",
+      "vasile_alexandri_2": "Vasile Alecsandri 2"
+    },
+    "hipodrom": {
+      "aleea_artiileristilor": "Aleea Artileristilor",
+      "culturii": "Culturii (nu exista OSM)",
+      "mihai_viteazu": "Bulevardul Mihai Viteazul"
+    },
+    "lazaret": {
+      "auguste_treboniu_laurian": "August Treboniu Laurian",
+      "cezar_boliac": "Cezar Bolliac",
+      "corneliu_diaconovici": "Doctor Corneliu Diaconovici",
+      "emile_zola": "Émile Zola",
+      "icob_bologa": "Iacob Bologa",
+      "ivan_sergheievici_turghenev": "Turgheniev",
+      "lamark": "General Jean Maximilien Lamarque",
+      "plevnei": "Plevna",
+      "toamnei": "Lebedei"
+    },
+    "lupeni": {
+      "ciocarliei": "Ciorcarliei"
+    },
+    "strand2": {
+      "intrarea_dimitrie_cantemir": "Dimitrie Cantemir",
+      "prof_cornel_irimie": "Profesor Cornel Irimie",
+      "telorman": "Teleorman"
+    },
+    "terezian": {
+      "bujorului": "Bujorului (nu exista OSM)",
+      "constantin_notara": "Constantin I. Nottara",
+      "dumitru_bagdazar": "Doctor Dumitru Bagdazar",
+      "general_balan": "General Grigore Balan",
+      "ion_pop_reteganul": "Ion Pop Reteganu",
+      "tiglarilor": "Tiglari"
+    },
+    "trei_stejari": {
+      "costache_negruzzi": "Constantin (Costache) Negruzzi",
+      "diaconu_coresi": "Diaconul Coressi",
+      "hegel": "Georg Wilhelm Friedrich Hegel",
+      "podragul": "Podragu"
+    },
+    "valea_aurie": {
+      "cindrelului": "Cindrel",
+      "fantanele_sibiel": "Fantanele",
+      "mihaly_theodor": "Theodor Mihaly",
+      "pictor_nicolae_grigorescu": "Nicolae Grigorescu",
+      "preot_baca": "Preot Bacca"
+    }
+  },
+  "omit": {
+    "trei_stejari": [
+      "fabricii",
+      "ghetariei",
+      "independentei"
+    ]
+  },
+  "widths": {
+    "dumbravii": {
+      "calea_dumbravii": {
+        "bike1_m": 2.5,
+        "bike2_m": 2.5
+      }
+    },
+    "hipodrom": {
+      "aleea_biruintei": {
+        "sidewalk2_m": 1.9
+      }
+    },
+    "terezian": {
+      "arad": {
+        "carriageway_m": 5.5
+      }
+    },
+    "trei_stejari": {
+      "negoi_2": {
+        "row_width_m": null
+      }
+    }
+  },
+  "baselines": {
+    "centru": {
+      "avocat_macelaru_ilie": {
+        "sheetName": "Avocat Macelaru Ilie",
+        "widths": {
+          "Latime carosabil": "10",
+          "Latime trotuar 1": "2.6",
+          "Latime trotuar 2": "1.8",
+          "Zona verde 2": "1"
+        }
+      },
+      "bdul_victoriei_1": {
+        "sheetName": "Bdul Victoriei 1",
+        "widths": {
+          "Latime carosabil": "12",
+          "Latime trotuar 1": "2.1",
+          "Latime trotuar 2": "2",
+          "Latime pista biciclete 1": "1"
+        }
+      },
+      "bdul_victoriei_2": {
+        "sheetName": "Bdul Victoriei 2",
+        "widths": {
+          "Latime carosabil": "9.5",
+          "Latime trotuar 1": "3.4",
+          "Latime trotuar 2": "2.4"
+        }
+      }
+    },
+    "dumbravii": {
+      "anghel_dimitrie": {
+        "sheetName": "Anghel Dimitrie",
+        "widths": {
+          "Latime trama stradala": "10",
+          "Latime carosabil": "7",
+          "Latime trotuar 1": "1.7",
+          "Latime trotuar 2": "1.55"
+        }
+      },
+      "calea_dumbravii": {
+        "sheetName": "Calea Dumbravii",
+        "widths": {
+          "Latime trama stradala": "0"
+        }
+      },
+      "general_traian_mosoiu": {
+        "sheetName": "General Traian Mosoiu",
+        "widths": {
+          "Latime trama stradala": "8",
+          "Latime carosabil": "5",
+          "Latime trotuar 1": "1.1",
+          "Latime trotuar 2": "1.4",
+          "Zona libera trotuar 1": "0.2",
+          "Zona libera trotuar 2": "0.2"
+        }
+      },
+      "johan_wolfgang_goethe": {
+        "sheetName": "Johan Wolfgang Goethe",
+        "widths": {
+          "Latime trama stradala": "9",
+          "Latime carosabil": "6",
+          "Latime trotuar 1": "1.2",
+          "Latime trotuar 2": "1.4"
+        }
+      },
+      "vasile_alexandri_1": {
+        "sheetName": "Vasile Alexandri 1",
+        "widths": {
+          "Latime trama stradala": "9",
+          "Latime carosabil": "6",
+          "Latime trotuar 1": "1.3",
+          "Latime trotuar 2": "1.4"
+        }
+      },
+      "vasile_alexandri_2": {
+        "sheetName": "Vasile Alexandri 2",
+        "widths": {
+          "Latime trama stradala": "9",
+          "Latime carosabil": "6",
+          "Latime trotuar 1": "1.8",
+          "Latime trotuar 2": "1.3",
+          "Zona libera trotuar 1": "0.8",
+          "Zona libera trotuar 2": "0.7"
+        }
+      }
+    },
+    "hipodrom": {
+      "aleea_artiileristilor": {
+        "sheetName": "Aleea Artiileristilor",
+        "widths": {
+          "Latime trama stradala": "9.65",
+          "Latime carosabil": "5.6",
+          "Latime trotuar 1": "2.1",
+          "Latime trotuar 2": "1.95",
+          "Zona libera trotuar 2": "5.1",
+          "Zona verde 2": "2.5"
+        }
+      },
+      "aleea_biruintei": {
+        "sheetName": "Aleea Biruintei",
+        "widths": {
+          "Latime carosabil": "9.1",
+          "Latime trotuar 1": "1.8",
+          "Zona libera trotuar 1": "0.8"
+        }
+      },
+      "culturii": {
+        "sheetName": "Culturii",
+        "widths": {
+          "Latime carosabil": "9",
+          "Latime trotuar 1": "1.3",
+          "Latime trotuar 2": "1.4"
+        }
+      },
+      "mihai_viteazu": {
+        "sheetName": "Mihai Viteazu",
+        "widths": {
+          "Latime trama stradala": "13.5",
+          "Latime carosabil": "10",
+          "Latime trotuar 1": "1.5",
+          "Latime trotuar 2": "2",
+          "Latime parcare 1": "5.2",
+          "Latime parcare 2": "5",
+          "Latime pista biciclete 1": "0.9",
+          "Latime pista biciclete 2": "1",
+          "Zona verde 1": "3.3",
+          "Zona verde 2": "8",
+          "Zona verde intre benzi": "5.2"
+        }
+      }
+    },
+    "lazaret": {
+      "auguste_treboniu_laurian": {
+        "sheetName": "Auguste Treboniu Laurian",
+        "widths": {
+          "Latime trama stradala": "17.5",
+          "Latime carosabil": "8.7",
+          "Latime trotuar 1": "2.1",
+          "Latime trotuar 2": "2.3",
+          "Zona verde 1": "1",
+          "Zona verde 2": "1.2"
+        }
+      },
+      "cezar_boliac": {
+        "sheetName": "Cezar Boliac",
+        "widths": {
+          "Latime trama stradala": "12.4",
+          "Latime carosabil": "6.2",
+          "Latime trotuar 1": "2.4",
+          "Latime trotuar 2": "2",
+          "Zona libera trotuar 1": "1.1",
+          "Zona libera trotuar 2": "1.2",
+          "Zona verde 1": "0.9"
+        }
+      },
+      "corneliu_diaconovici": {
+        "sheetName": "Corneliu Diaconovici",
+        "widths": {
+          "Latime trama stradala": "9.7",
+          "Latime carosabil": "6.1",
+          "Latime trotuar 1": "1.8",
+          "Latime trotuar 2": "1.8",
+          "Zona libera trotuar 1": "0.8",
+          "Zona libera trotuar 2": "0.5"
+        }
+      },
+      "emile_zola": {
+        "sheetName": "Emile Zola",
+        "widths": {
+          "Latime trama stradala": "10.2",
+          "Latime carosabil": "6",
+          "Latime trotuar 1": "2",
+          "Latime trotuar 2": "2.2",
+          "Zona libera trotuar 1": "1",
+          "Zona libera trotuar 2": "1"
+        }
+      },
+      "icob_bologa": {
+        "sheetName": "Icob Bologa",
+        "widths": {
+          "Latime trama stradala": "24.2",
+          "Latime carosabil": "7",
+          "Latime trotuar 1": "1.1",
+          "Latime trotuar 2": "1.2",
+          "Latime parcare 1": "2.3",
+          "Latime parcare 2": "4.8",
+          "Zona verde 1": "1.5",
+          "Zona verde 2": "2.4"
+        }
+      },
+      "ivan_sergheievici_turghenev": {
+        "sheetName": "Ivan Sergheievici Turghenev",
+        "widths": {
+          "Latime trama stradala": "9.6",
+          "Latime carosabil": "5.9",
+          "Latime trotuar 1": "1.9",
+          "Latime trotuar 2": "1.8",
+          "Zona libera trotuar 1": "0.9",
+          "Zona libera trotuar 2": "0.6"
+        }
+      },
+      "lamark": {
+        "sheetName": "Lamark",
+        "widths": {
+          "Latime trama stradala": "9.4",
+          "Latime carosabil": "6",
+          "Latime trotuar 1": "1.9",
+          "Latime trotuar 2": "1.5",
+          "Zona libera trotuar 1": "0.9",
+          "Zona libera trotuar 2": "0.9"
+        }
+      },
+      "plevnei": {
+        "sheetName": "Plevnei",
+        "widths": {
+          "Latime trama stradala": "9.4",
+          "Latime carosabil": "5.6",
+          "Latime trotuar 1": "1.8",
+          "Latime trotuar 2": "2",
+          "Zona libera trotuar 1": "1.1",
+          "Zona libera trotuar 2": "0.8"
+        }
+      },
+      "toamnei": {
+        "sheetName": "Toamnei",
+        "widths": {
+          "Latime trama stradala": "9.6",
+          "Latime carosabil": "6",
+          "Latime trotuar 1": "1.9",
+          "Latime trotuar 2": "1.7",
+          "Zona libera trotuar 1": "1",
+          "Zona libera trotuar 2": "1"
+        }
+      }
+    },
+    "lupeni": {
+      "ciocarliei": {
+        "sheetName": "Ciocarliei",
+        "widths": {
+          "Latime trama stradala": "11.2",
+          "Latime carosabil": "6.1",
+          "Latime trotuar 1": "2.6",
+          "Latime trotuar 2": "2.5",
+          "Zona libera trotuar 1": "1.1",
+          "Zona libera trotuar 2": "1.6"
+        }
+      }
+    },
+    "strand2": {
+      "intrarea_dimitrie_cantemir": {
+        "sheetName": "Intrarea Dimitrie Cantemir",
+        "widths": {
+          "Latime trama stradala": "11.6",
+          "Latime carosabil": "6.8",
+          "Latime trotuar 1": "2.3",
+          "Latime trotuar 2": "2.5",
+          "Zona libera trotuar 1": "1",
+          "Zona libera trotuar 2": "1.1"
+        }
+      },
+      "prof_cornel_irimie": {
+        "sheetName": "Prof. Cornel Irimie",
+        "widths": {
+          "Latime trama stradala": "9",
+          "Latime carosabil": "6.2",
+          "Latime trotuar 1": "1.4",
+          "Latime trotuar 2": "1.4"
+        }
+      },
+      "telorman": {
+        "sheetName": "Telorman",
+        "widths": {
+          "Latime trama stradala": "7.1",
+          "Latime carosabil": "4.1",
+          "Latime trotuar 1": "1.5",
+          "Latime trotuar 2": "1.5",
+          "Latime parcare 1": "5",
+          "Latime parcare 2": "2.3",
+          "Zona verde 1": "1.7",
+          "Zona verde 2": "3.5"
+        }
+      }
+    },
+    "terezian": {
+      "arad": {
+        "sheetName": "Arad",
+        "widths": {
+          "Latime trotuar 1": "2",
+          "Latime trotuar 2": "2",
+          "Zona libera trotuar 1": "0.7",
+          "Zona libera trotuar 2": "0.9"
+        }
+      },
+      "bujorului": {
+        "sheetName": "Bujorului",
+        "widths": {
+          "Latime trama stradala": "7.9",
+          "Latime carosabil": "5.6",
+          "Latime trotuar 1": "1.3",
+          "Latime trotuar 2": "1",
+          "Zona libera trotuar 1": "0.4",
+          "Zona libera trotuar 2": "0.8"
+        }
+      },
+      "constantin_notara": {
+        "sheetName": "Constantin Notara",
+        "widths": {
+          "Latime trama stradala": "15.2",
+          "Latime carosabil": "4",
+          "Latime trotuar 1": "1.4",
+          "Latime trotuar 2": "1.4",
+          "Latime parcare 1": "2.5",
+          "Latime parcare 2": "2.5",
+          "Zona verde 1": "0.8",
+          "Zona verde 2": "0.9"
+        }
+      },
+      "dumitru_bagdazar": {
+        "sheetName": "Dumitru Bagdazar",
+        "widths": {
+          "Latime trama stradala": "9.9",
+          "Latime carosabil": "6.1",
+          "Latime trotuar 1": "2",
+          "Latime trotuar 2": "1.8"
+        }
+      },
+      "general_balan": {
+        "sheetName": "General Balan",
+        "widths": {
+          "Latime trama stradala": "7.7",
+          "Latime carosabil": "4.4",
+          "Latime trotuar 1": "1.6",
+          "Latime trotuar 2": "1.7",
+          "Zona libera trotuar 1": "0",
+          "Zona libera trotuar 2": "0"
+        }
+      },
+      "ion_pop_reteganul": {
+        "sheetName": "Ion Pop Reteganul",
+        "widths": {
+          "Latime trama stradala": "5.9",
+          "Latime carosabil": "3.5",
+          "Latime trotuar 1": "1.2",
+          "Latime trotuar 2": "1.2",
+          "Zona libera trotuar 2": "0.3"
+        }
+      },
+      "tiglarilor": {
+        "sheetName": "Tiglarilor",
+        "widths": {
+          "Latime trama stradala": "13.1",
+          "Latime carosabil": "5.9",
+          "Latime trotuar 1": "2.4",
+          "Latime trotuar 2": "3",
+          "Latime pista biciclete 1": "0.9",
+          "Latime pista biciclete 2": "0.9"
+        }
+      }
+    },
+    "trei_stejari": {
+      "costache_negruzzi": {
+        "sheetName": "Costache Negruzzi",
+        "widths": {
+          "Latime trama stradala": "13.9",
+          "Latime carosabil": "7.5",
+          "Latime trotuar 1": "3.1",
+          "Latime trotuar 2": "3.3",
+          "Latime parcare 1": "1.3",
+          "Latime parcare 2": "1.3"
+        }
+      },
+      "diaconu_coresi": {
+        "sheetName": "Diaconu Coresi",
+        "widths": {
+          "Latime trama stradala": "10.3",
+          "Latime carosabil": "6.2",
+          "Latime trotuar 1": "1.9",
+          "Latime trotuar 2": "2.2",
+          "Zona libera trotuar 1": "0.8",
+          "Zona libera trotuar 2": "1.6"
+        }
+      },
+      "fabricii": {
+        "sheetName": "Fabricii",
+        "widths": {
+          "Latime trama stradala": "0"
+        }
+      },
+      "ghetariei": {
+        "sheetName": "Ghetariei",
+        "widths": {
+          "Latime trama stradala": "0"
+        }
+      },
+      "hegel": {
+        "sheetName": "Hegel",
+        "widths": {
+          "Latime trama stradala": "13.9",
+          "Latime carosabil": "9",
+          "Latime trotuar 1": "2.3",
+          "Latime trotuar 2": "2.6",
+          "Latime parcare 1": "0.8",
+          "Latime parcare 2": "0.8"
+        }
+      },
+      "independentei": {
+        "sheetName": "Independentei",
+        "widths": {
+          "Latime trama stradala": "0"
+        }
+      },
+      "negoi_2": {
+        "sheetName": "Negoi 2",
+        "widths": {
+          "Latime trama stradala": "9.4",
+          "Latime carosabil": "5.1",
+          "Latime trotuar 1": "2.4",
+          "Latime trotuar 2": "1.9",
+          "Zona libera trotuar 1": "1.1",
+          "Zona libera trotuar 2": "0"
+        }
+      },
+      "podragul": {
+        "sheetName": "Podragul",
+        "widths": {
+          "Latime trama stradala": "9.9",
+          "Latime carosabil": "6.1",
+          "Latime trotuar 1": "1.6",
+          "Latime trotuar 2": "2.2"
+        }
+      }
+    },
+    "valea_aurie": {
+      "cindrelului": {
+        "sheetName": "Cindrelului",
+        "widths": {
+          "Latime trama stradala": "9.5",
+          "Latime carosabil": "6.1",
+          "Latime trotuar 1": "1.7",
+          "Latime trotuar 2": "1.7",
+          "Zona libera trotuar 1": "1",
+          "Zona libera trotuar 2": "1.1"
+        }
+      },
+      "fantanele_sibiel": {
+        "sheetName": "Fantanele Sibiel",
+        "widths": {
+          "Latime trama stradala": "11.3",
+          "Latime carosabil": "9",
+          "Latime trotuar 1": "0.9",
+          "Latime trotuar 2": "1.4"
+        }
+      },
+      "mihaly_theodor": {
+        "sheetName": "Mihaly Theodor",
+        "widths": {
+          "Latime trama stradala": "9.7",
+          "Latime carosabil": "7",
+          "Latime trotuar 1": "1.2",
+          "Latime trotuar 2": "1.5"
+        }
+      },
+      "pictor_nicolae_grigorescu": {
+        "sheetName": "Pictor Nicolae Grigorescu",
+        "widths": {
+          "Latime trama stradala": "9.6",
+          "Latime carosabil": "6",
+          "Latime trotuar 1": "2",
+          "Latime trotuar 2": "1.6"
+        }
+      },
+      "preot_baca": {
+        "sheetName": "Preot Baca",
+        "widths": {
+          "Latime trama stradala": "10.2",
+          "Latime carosabil": "7",
+          "Latime trotuar 1": "2.4",
+          "Latime trotuar 2": "0.8"
+        }
+      }
+    }
+  },
+  "updated_at": "2026-08-22T21:01:54.475Z"
+}

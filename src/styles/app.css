@@ -2446,9 +2446,24 @@ html[data-theme="dark"] .bldg-chip {
   background: #e8590c;
   color: #fff;
 }
+.csv-fix-count {
+  font: 700 10px var(--font-body);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--accent) 80%, #000);
+  color: #fff;
+}
 .csv-editor-tab.on .csv-mismatch-count {
   background: #fff;
   color: #c2410c;
+}
+.csv-editor-tab.on .csv-fix-count {
+  background: #fff;
+  color: var(--ink);
 }
 .csv-editor-body {
   flex: 1;
@@ -2548,8 +2563,63 @@ html[data-theme="dark"] .csv-table th.csv-col-flag-src {
   min-width: 160px;
   font-weight: 650;
 }
+.csv-name-stack {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+}
+.csv-name-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 8px 6px;
+  font: 600 10px var(--font-body);
+  color: var(--muted);
+}
+.csv-fix-badge {
+  font: 700 9px var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+.csv-fix-badge.rename {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+.csv-fix-badge.width {
+  background: color-mix(in srgb, #7048e8 16%, transparent);
+  color: #7048e8;
+}
+.csv-fix-badge.omit {
+  background: color-mix(in srgb, #868e96 22%, transparent);
+  color: var(--muted);
+}
+.csv-drift-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, #e8590c 14%, transparent);
+  color: #c2410c;
+  font: 650 12px var(--font-body);
+  flex-shrink: 0;
+}
+.csv-row.omitted td,
+.csv-row.omitted .csv-col-mark,
+.csv-row.omitted .csv-col-flags,
+.csv-row.omitted .csv-col-del {
+  background: color-mix(in srgb, var(--ink) 6%, var(--panel));
+  opacity: 0.72;
+}
 .csv-cell:focus {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.csv-cell:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 .csv-row.mark-illegal td,
 .csv-row.mark-illegal .csv-col-mark,

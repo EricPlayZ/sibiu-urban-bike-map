@@ -21,7 +21,7 @@ import {
 } from "./geoAssign";
 import { MEASUREMENT_CSV_SLUGS } from "./measurementsSlugs.generated";
 import { fetchGoogleSheetMeasurements } from "./sheetFetch";
-import { serializeSheetTable } from "./sheetTransform";
+import { diffAgainstGoldenCsv, serializeSheetTable, type TransformedSheetTable } from "./sheetTransform";
 import { applySchoolCatchments, type CatchmentStats } from "./schoolCatchment";
 import { makeStreetId, normalizeStreetName, type Measurement } from "./space";
 import {
@@ -96,6 +96,79 @@ async function tryFetchCsv(url: string): Promise<string | null> {
   const text = await tryFetchText(url, { cache: "no-store" });
   if (text == null || !looksLikeMeasurementCsv(text)) return null;
   return text;
+}
+
+const CSV_PARITY_SAMPLE = 25;
+
+async function pushCsvParityIssues(tables: TransformedSheetTable[], issues: ImportIssue[]) {
+  const tableBySlug = new Map(tables.map((t) => [t.slug, t]));
+  for (const slug of MEASUREMENT_CSV_SLUGS) {
+    const gold = await tryFetchCsv(`data/measurements/${slug}.csv`);
+    if (gold == null) {
+      issues.push({
+        code: "sheets_csv_mismatch",
+        severity: "warn",
+        neighborhood_slug: slug,
+        detail: `Nu am putut încărca CSV-ul de referință ${slug}.csv pentru verificarea spreadsheet-ului.`,
+        hint: `public/data/measurements/${slug}.csv`,
+      });
+      continue;
+    }
+    const table = tableBySlug.get(slug);
+    if (!table) {
+      issues.push({
+        code: "sheets_csv_mismatch",
+        severity: "error",
+        neighborhood_slug: slug,
+        detail: `CSV „${slug}” există, dar cartierul lipsește din spreadsheet-ul prelucrat.`,
+        hint: "Verifică tab-ul din Google Sheets sau maparea din sheetCatalog.",
+      });
+      continue;
+    }
+    const diff = diffAgainstGoldenCsv(table, gold);
+    for (const name of diff.missing.slice(0, CSV_PARITY_SAMPLE)) {
+      issues.push({
+        code: "sheets_csv_mismatch",
+        severity: "error",
+        neighborhood_slug: slug,
+        csv_name: name,
+        detail: `„${name}” e în CSV dar lipsește din spreadsheet-ul prelucrat (${slug}).`,
+        hint: "Strada a dispărut din sheet sau e omisă / fără lățimi.",
+      });
+    }
+    for (const name of diff.extra.slice(0, CSV_PARITY_SAMPLE)) {
+      issues.push({
+        code: "sheets_csv_mismatch",
+        severity: "error",
+        neighborhood_slug: slug,
+        csv_name: name,
+        detail: `„${name}” e în spreadsheet-ul prelucrat dar lipsește din CSV (${slug}).`,
+        hint: "Actualizează CSV-ul de referință sau adaugă un omit/rename în meniul de măsurători.",
+      });
+    }
+    for (const v of diff.values.slice(0, CSV_PARITY_SAMPLE)) {
+      issues.push({
+        code: "sheets_csv_mismatch",
+        severity: "error",
+        neighborhood_slug: slug,
+        csv_name: v.name,
+        detail: `„${v.name}” · ${v.field}: spreadsheet ${v.got || "∅"} ≠ CSV ${v.gold || "∅"} (${slug}).`,
+        hint: "CSV-ul de referință și rezultatul final trebuie să coincidă exact.",
+      });
+    }
+    const overflow =
+      Math.max(0, diff.missing.length - CSV_PARITY_SAMPLE) +
+      Math.max(0, diff.extra.length - CSV_PARITY_SAMPLE) +
+      Math.max(0, diff.values.length - CSV_PARITY_SAMPLE);
+    if (overflow > 0) {
+      issues.push({
+        code: "sheets_csv_mismatch",
+        severity: "error",
+        neighborhood_slug: slug,
+        detail: `+${overflow} diferențe CSV ↔ spreadsheet în ${slug} (total ${diff.missing.length + diff.extra.length + diff.values.length}).`,
+      });
+    }
+  }
 }
 
 /** Slug-uri CSV: din modulul generat la build + verificare că fișierul e chiar CSV. */
@@ -341,11 +414,25 @@ export async function runImportPipeline(limits: GeoJSON.FeatureCollection): Prom
         hint: "Verifică că spreadsheet-ul e public (Anyone with the link).",
       });
     }
+    for (const drift of sheets.drift) {
+      issues.push({
+        code: drift.kind === "orphan" ? "sheets_fix_orphan" : "sheets_fix_stale",
+        severity: "warn",
+        neighborhood_slug: drift.slug,
+        csv_name: drift.displayName || drift.sheetName,
+        detail: drift.detail,
+        hint:
+          drift.kind === "orphan"
+            ? "Strada a dispărut din spreadsheet; corecția din street-fixes.json a rămas. Deschide meniul de măsurători."
+            : "Spreadsheet-ul s-a schimbat peste o corecție deja salvată. Verifică și re-salvează din meniul de măsurători.",
+      });
+    }
     if (sheets.tables.length) {
       measurementSource = "google-sheets";
       for (const table of sheets.tables) {
         ingestText(table.slug, serializeSheetTable(table), "Sheets");
       }
+      await pushCsvParityIssues(sheets.tables, issues);
     }
   } catch (err) {
     issues.push({

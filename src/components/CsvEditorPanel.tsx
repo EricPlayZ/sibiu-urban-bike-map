@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
   Check,
-  Plus,
+  RotateCcw,
   Save,
   Search,
   Table2,
@@ -23,13 +23,14 @@ import {
 import {
   cloneCsvTables,
   csvTablesFileFingerprint,
-  emptyCsvRow,
-  fetchMeasurementTables,
-  persistMeasurementCsvFiles,
-  serializeDirtyCsvTables,
+  editorRowToFixable,
+  fetchSheetEditorTables,
+  persistStreetFixesFile,
+  tablesToRecordsBySlug,
   type CsvEditorRow,
   type CsvEditorTable,
 } from "../lib/csvFiles";
+import { deriveStreetFixes, recordsHaveFix, type FixDrift, type StreetFixesFile } from "../lib/streetFixes";
 import { LAYER_COLORS } from "../lib/space";
 import { useApp } from "../store";
 
@@ -72,40 +73,23 @@ function nameOf(row: CsvEditorRow, nameCol: string | null, headers: string[]) {
 
 export function CsvEditorPanel() {
   const open = useApp((s) => s.csvEditorOpen);
-  const close = useApp((s) => s.closeCsvEditor);
+  const closeStore = useApp((s) => s.closeCsvEditor);
   const neighborhoodList = useApp((s) => s.neighborhoodList);
   const showToast = useApp((s) => s.showToast);
   const reloadPipeline = useApp((s) => s.reloadPipeline);
 
   const [tables, setTables] = useState<CsvEditorTable[] | null>(null);
   const [saved, setSaved] = useState<CsvEditorTable[] | null>(null);
+  const [savedFixes, setSavedFixes] = useState<StreetFixesFile | null>(null);
+  const [drift, setDrift] = useState<FixDrift[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [slug, setSlug] = useState<string>("");
   const [query, setQuery] = useState("");
   const [onlyMismatches, setOnlyMismatches] = useState(false);
-
-  const loadTables = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const next = await fetchMeasurementTables();
-      setTables(next);
-      setSaved(cloneCsvTables(next));
-      setSlug((cur) => (next.some((t) => t.slug === cur) ? cur : next[0]?.slug || ""));
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Nu am putut încărca CSV-urile.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    if (tables) return;
-    void loadTables();
-  }, [open, tables, loadTables]);
+  const [onlyFixes, setOnlyFixes] = useState(false);
+  const [onlyOmitted, setOnlyOmitted] = useState(false);
 
   const fileDirty = Boolean(tables && saved && csvTablesFileFingerprint(tables) !== csvTablesFileFingerprint(saved));
   const marksDirty = Boolean(
@@ -114,6 +98,31 @@ export function CsvEditorPanel() {
       JSON.stringify(tables.map((t) => t.rows.map((r) => r.mark))) !== JSON.stringify(saved.map((t) => t.rows.map((r) => r.mark)))
   );
   const dirty = fileDirty || marksDirty;
+
+  const loadTables = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const next = await fetchSheetEditorTables();
+      setTables(next.tables);
+      setSaved(cloneCsvTables(next.tables));
+      setSavedFixes(next.fixes);
+      setDrift(next.drift);
+      setSlug((cur) => (next.tables.some((t) => t.slug === cur) ? cur : next.tables[0]?.slug || ""));
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Nu am putut încărca spreadsheet-ul.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    if (tables && fileDirty) return;
+    void loadTables();
+    // fileDirty / tables intentionally omitted: reload on each open unless unsaved edits exist
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, loadTables]);
 
   useEffect(() => {
     if (!fileDirty) return;
@@ -124,6 +133,11 @@ export function CsvEditorPanel() {
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [fileDirty]);
+
+  const requestClose = () => {
+    if (fileDirty && !window.confirm("Ai modificări nesalvate în corecții. Închizi oricum?")) return;
+    closeStore();
+  };
 
   const neighborhoodName = (s: string) => neighborhoodList.find((n) => n.slug === s)?.name || s;
 
@@ -136,10 +150,20 @@ export function CsvEditorPanel() {
     for (const t of tables) {
       let n = 0;
       for (const row of t.rows) {
+        if (row.omitted) continue;
         const flags = flagsFromRawRecord(t.headers, row.cells);
         if (!parkingMarkMatchesFlags(row.mark, flags)) n++;
       }
       out[t.slug] = n;
+    }
+    return out;
+  }, [tables]);
+
+  const fixCountBySlug = useMemo(() => {
+    const out: Record<string, number> = {};
+    if (!tables) return out;
+    for (const t of tables) {
+      out[t.slug] = t.rows.filter((r) => recordsHaveFix(editorRowToFixable(r))).length;
     }
     return out;
   }, [tables]);
@@ -149,11 +173,14 @@ export function CsvEditorPanel() {
     const q = query.trim().toLowerCase();
     return active.rows.filter((row) => {
       const flags = flagsFromRawRecord(active.headers, row.cells);
-      if (onlyMismatches && parkingMarkMatchesFlags(row.mark, flags)) return false;
-      if (q && !nameOf(row, nameCol, active.headers).toLowerCase().includes(q)) return false;
+      if (onlyOmitted && !row.omitted) return false;
+      if (onlyFixes && !recordsHaveFix(editorRowToFixable(row))) return false;
+      if (onlyMismatches && (row.omitted || parkingMarkMatchesFlags(row.mark, flags))) return false;
+      const label = `${nameOf(row, nameCol, active.headers)} ${row.sheetName} ${row.uniqueKey}`;
+      if (q && !label.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [active, nameCol, onlyMismatches, query]);
+  }, [active, nameCol, onlyFixes, onlyMismatches, onlyOmitted, query]);
 
   const patchTable = (slugToPatch: string, fn: (t: CsvEditorTable) => CsvEditorTable) => {
     setTables((prev) => (prev ? prev.map((t) => (t.slug === slugToPatch ? fn(t) : t)) : prev));
@@ -175,38 +202,47 @@ export function CsvEditorPanel() {
     }));
   };
 
-  const addRow = () => {
-    if (!active) return;
-    patchTable(active.slug, (t) => ({ ...t, rows: [...t.rows, emptyCsvRow(t.headers)] }));
-  };
-
-  const deleteRow = (rowId: string) => {
+  const omitRow = (rowId: string) => {
     if (!active) return;
     const row = active.rows.find((r) => r.id === rowId);
-    const label = row ? nameOf(row, nameCol, active.headers) || "rândul gol" : "rândul";
-    if (!window.confirm(`Ștergi „${label}” din ${neighborhoodName(active.slug)}?`)) return;
-    patchTable(active.slug, (t) => ({ ...t, rows: t.rows.filter((r) => r.id !== rowId) }));
+    const label = row ? nameOf(row, nameCol, active.headers) || row.sheetName : "rândul";
+    if (!window.confirm(`Omiți „${label}” din ${neighborhoodName(active.slug)}? Rămâne în spreadsheet, dar nu ajunge pe hartă.`)) return;
+    patchTable(active.slug, (t) => ({
+      ...t,
+      rows: t.rows.map((r) => (r.id === rowId ? { ...r, omitted: true } : r)),
+    }));
+  };
+
+  const restoreRow = (rowId: string) => {
+    if (!active) return;
+    patchTable(active.slug, (t) => ({
+      ...t,
+      rows: t.rows.map((r) => (r.id === rowId ? { ...r, omitted: false } : r)),
+    }));
   };
 
   const discard = () => {
     if (!saved) return;
     if (!dirty) return;
-    if (!window.confirm("Renunți la modificările din editor? CSV-urile de pe disk rămân neschimbate.")) return;
+    if (!window.confirm("Renunți la modificările din editor? street-fixes.json rămâne neschimbat.")) return;
     setTables(cloneCsvTables(saved));
     showToast("Modificări anulate");
   };
 
   const save = async () => {
-    if (!tables || !saved || !fileDirty) return;
+    if (!tables || !savedFixes || !fileDirty) return;
     setSaving(true);
-    const ok = await persistMeasurementCsvFiles(serializeDirtyCsvTables(tables, saved));
+    const next = deriveStreetFixes(tablesToRecordsBySlug(tables), savedFixes);
+    const ok = await persistStreetFixesFile(next);
     setSaving(false);
     if (!ok) {
-      showToast("Salvarea CSV a eșuat — rulează `npm run dev`");
+      showToast("Salvarea corecțiilor a eșuat — rulează `npm run dev`");
       return;
     }
     setSaved(cloneCsvTables(tables));
-    showToast("CSV salvat pe disk");
+    setSavedFixes(next);
+    setDrift([]);
+    showToast("Corecții salvate în street-fixes.json");
     await reloadPipeline();
   };
 
@@ -216,7 +252,7 @@ export function CsvEditorPanel() {
     <AnimatePresence>
       {open && (
         <>
-          <button type="button" className="scrim csv-editor-scrim" onClick={close} aria-label="Închide editorul CSV" />
+          <button type="button" className="scrim csv-editor-scrim" onClick={requestClose} aria-label="Închide editorul de măsurători" />
           <motion.aside
             className="panel csv-editor-panel"
             initial={{ opacity: 0, y: 18 }}
@@ -231,24 +267,33 @@ export function CsvEditorPanel() {
               <div>
                 <h2 id="csv-editor-title">
                   <Table2 size={18} strokeWidth={2.25} aria-hidden />
-                  Măsurători CSV
+                  Măsurători spreadsheet
                   <span className="csv-dev-badge">dev</span>
                 </h2>
                 <p className="sub">
-                  Flag-urile se citesc din lățimi (parcare vs. zonă liberă trotuar), nu se editează. Galben = ilegal pe
-                  trotuar, roșu = amenajată pe trotuar — ca să vezi dacă numerele spun același lucru.
+                  Valorile sunt din Google Sheets, cu corecțiile din street-fixes.json deja aplicate. Rename / lățimi /
+                  omit se salvează acolo — nu în CSV. Flag-urile se citesc din lățimi.
                 </p>
               </div>
-              <button type="button" className="icon-x" onClick={close} aria-label="Închide">
+              <button type="button" className="icon-x" onClick={requestClose} aria-label="Închide">
                 <X size={18} strokeWidth={2.25} />
               </button>
             </div>
+
+            {drift.length > 0 ? (
+              <p className="csv-drift-banner" role="status">
+                <AlertTriangle size={15} strokeWidth={2.25} aria-hidden />
+                {drift.length === 1
+                  ? drift[0].detail
+                  : `${drift.length} corecții nu mai coincid cu spreadsheet-ul (vezi raportul de import, coduri sheets_fix_stale / sheets_fix_orphan).`}
+              </p>
+            ) : null}
 
             <div className="csv-editor-toolbar">
               <div className="csv-editor-actions">
                 <button type="button" className="btn primary csv-editor-btn" onClick={() => void save()} disabled={!fileDirty || saving}>
                   <Save size={16} strokeWidth={2.25} />
-                  {saving ? "Se salvează…" : "Salvează"}
+                  {saving ? "Se salvează…" : "Salvează corecții"}
                 </button>
                 <button type="button" className="btn csv-editor-btn" onClick={discard} disabled={!dirty}>
                   <Undo2 size={16} strokeWidth={2.25} />
@@ -264,6 +309,14 @@ export function CsvEditorPanel() {
                   placeholder="Caută stradă…"
                   aria-label="Caută stradă"
                 />
+              </label>
+              <label className={`csv-mismatch-toggle ${onlyFixes ? "on" : ""}`}>
+                <input type="checkbox" checked={onlyFixes} onChange={(e) => setOnlyFixes(e.target.checked)} />
+                Doar corecții
+              </label>
+              <label className={`csv-mismatch-toggle ${onlyOmitted ? "on" : ""}`}>
+                <input type="checkbox" checked={onlyOmitted} onChange={(e) => setOnlyOmitted(e.target.checked)} />
+                Omise
               </label>
               <label className={`csv-mismatch-toggle ${onlyMismatches ? "on" : ""}`}>
                 <input type="checkbox" checked={onlyMismatches} onChange={(e) => setOnlyMismatches(e.target.checked)} />
@@ -286,6 +339,8 @@ export function CsvEditorPanel() {
               <div className="csv-editor-tabs" role="tablist" aria-label="Cartiere">
                 {tables.map((t) => {
                   const mismatches = mismatchCountBySlug[t.slug] || 0;
+                  const fixes = fixCountBySlug[t.slug] || 0;
+                  const live = t.rows.filter((r) => !r.omitted).length;
                   return (
                     <button
                       key={t.slug}
@@ -296,7 +351,8 @@ export function CsvEditorPanel() {
                       onClick={() => setSlug(t.slug)}
                     >
                       <span>{neighborhoodName(t.slug)}</span>
-                      <small>{t.rows.length}</small>
+                      <small>{live}</small>
+                      {fixes > 0 ? <span className="csv-fix-count">{fixes}</span> : null}
                       {mismatches > 0 ? <span className="csv-mismatch-count">{mismatches}</span> : null}
                     </button>
                   );
@@ -305,7 +361,7 @@ export function CsvEditorPanel() {
             )}
 
             <div className="csv-editor-body">
-              {loading && <p className="hint-text">Se încarcă tabelele…</p>}
+              {loading && <p className="hint-text">Se încarcă spreadsheet-ul…</p>}
               {loadError && (
                 <p className="hint-text">
                   {loadError}{" "}
@@ -339,7 +395,7 @@ export function CsvEditorPanel() {
                       {visibleRows.length === 0 ? (
                         <tr>
                           <td colSpan={active.headers.length + 3} className="csv-empty">
-                            Niciun rând. Adaugă unul sau schimbă filtrul.
+                            Niciun rând. Schimbă filtrul sau așteaptă date în spreadsheet.
                           </td>
                         </tr>
                       ) : (
@@ -351,7 +407,8 @@ export function CsvEditorPanel() {
                             nameCol={nameCol}
                             onCell={setCell}
                             onMark={setMark}
-                            onDelete={deleteRow}
+                            onOmit={omitRow}
+                            onRestore={restoreRow}
                           />
                         ))
                       )}
@@ -363,12 +420,8 @@ export function CsvEditorPanel() {
 
             {active && (
               <div className="csv-editor-foot">
-                <button type="button" className="btn csv-editor-btn" onClick={addRow}>
-                  <Plus size={16} strokeWidth={2.25} />
-                  Adaugă rând
-                </button>
                 <p className="hint-text tight">
-                  {fileDirty ? "Modificări nesalvate în CSV." : "CSV-ul e la fel ca pe disk."}
+                  {fileDirty ? "Modificări nesalvate în street-fixes.json." : "Corecțiile coincid cu fișierul de pe disk."}
                   {marksDirty ? " Marcajele sunt doar în editor, nu se scriu în fișier." : ""}
                 </p>
               </div>
@@ -386,21 +439,36 @@ function CsvEditorRowView({
   nameCol,
   onCell,
   onMark,
-  onDelete,
+  onOmit,
+  onRestore,
 }: {
   row: CsvEditorRow;
   headers: string[];
   nameCol: string | null;
   onCell: (rowId: string, header: string, value: string) => void;
   onMark: (rowId: string, mark: ParkingMark) => void;
-  onDelete: (rowId: string) => void;
+  onOmit: (rowId: string) => void;
+  onRestore: (rowId: string) => void;
 }) {
   const flags = flagsFromRawRecord(headers, row.cells);
   const match = parkingMarkMatchesFlags(row.mark, flags);
   const chips = flagChips(flags);
+  const display = nameOf(row, nameCol, headers);
+  const renamed = display.trim() !== row.sheetName;
+  const widthOnly = Boolean(
+    recordsHaveFix({
+      uniqueKey: row.uniqueKey,
+      baseKey: row.baseKey,
+      sheetName: row.sheetName,
+      displayName: row.sheetName,
+      sheetCells: row.sheetCells,
+      cells: { ...row.cells, Nume: row.sheetName },
+      omitted: false,
+    })
+  );
 
   return (
-    <tr className={`csv-row mark-${row.mark} ${match ? "match" : "mismatch"}`}>
+    <tr className={`csv-row mark-${row.mark} ${match ? "match" : "mismatch"} ${row.omitted ? "omitted" : ""}`}>
       <td className="csv-col-mark">
         <div className="csv-mark-seg" role="group" aria-label="Marcaj așteptat">
           <button
@@ -434,13 +502,33 @@ function CsvEditorRowView({
       </td>
       {headers.map((h) => (
         <td key={h} className={isParkingFlagHeader(h) ? "csv-col-flag-src" : nameCol === h ? "csv-col-name" : undefined}>
-          <input
-            className="csv-cell"
-            value={row.cells[h] ?? ""}
-            onChange={(e) => onCell(row.id, h, e.target.value)}
-            inputMode={nameCol === h ? "text" : "decimal"}
-            aria-label={`${shortHeader(h)} — ${nameOf(row, nameCol, headers) || "rând nou"}`}
-          />
+          {nameCol === h ? (
+            <div className="csv-name-stack">
+              <input
+                className="csv-cell"
+                value={row.cells[h] ?? ""}
+                onChange={(e) => onCell(row.id, h, e.target.value)}
+                disabled={row.omitted}
+                aria-label={`Nume — ${display || row.sheetName}`}
+              />
+              <span className="csv-name-meta">
+                {renamed ? <span title={`Nume în spreadsheet: ${row.sheetName}`}>sheet: {row.sheetName}</span> : null}
+                {row.uniqueKey.includes("#") ? <span>#{row.uniqueKey.split("#")[1]}</span> : null}
+                {row.omitted ? <span className="csv-fix-badge omit">omis</span> : null}
+                {renamed ? <span className="csv-fix-badge rename">rename</span> : null}
+                {widthOnly ? <span className="csv-fix-badge width">lățimi</span> : null}
+              </span>
+            </div>
+          ) : (
+            <input
+              className="csv-cell"
+              value={row.cells[h] ?? ""}
+              onChange={(e) => onCell(row.id, h, e.target.value)}
+              inputMode="decimal"
+              disabled={row.omitted}
+              aria-label={`${shortHeader(h)} — ${display || row.sheetName}`}
+            />
+          )}
         </td>
       ))}
       <td className="csv-col-flags">
@@ -463,9 +551,15 @@ function CsvEditorRowView({
         </div>
       </td>
       <td className="csv-col-del">
-        <button type="button" className="icon-mini danger" title="Șterge rândul" aria-label="Șterge rândul" onClick={() => onDelete(row.id)}>
-          <Trash2 size={15} strokeWidth={2.25} />
-        </button>
+        {row.omitted ? (
+          <button type="button" className="icon-mini" title="Reia strada" aria-label="Reia strada" onClick={() => onRestore(row.id)}>
+            <RotateCcw size={15} strokeWidth={2.25} />
+          </button>
+        ) : (
+          <button type="button" className="icon-mini danger" title="Omite strada" aria-label="Omite strada" onClick={() => onOmit(row.id)}>
+            <Trash2 size={15} strokeWidth={2.25} />
+          </button>
+        )}
       </td>
     </tr>
   );

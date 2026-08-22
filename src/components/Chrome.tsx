@@ -136,7 +136,7 @@ export function MobileDock() {
         {import.meta.env.DEV ? (
           <button type="button" className={csvEditorOpen ? "on" : ""} onClick={toggleCsvEditor} aria-pressed={csvEditorOpen}>
             <Table2 size={18} strokeWidth={2.25} />
-            <span>CSV</span>
+            <span>Sheets</span>
           </button>
         ) : null}
       </div>

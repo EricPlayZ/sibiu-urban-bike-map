@@ -115,12 +115,12 @@ export function TopBar() {
               type="button"
               className={`chip-btn ${csvEditorOpen ? "on" : ""}`}
               onClick={toggleCsvEditor}
-              title="Măsurători CSV"
-              aria-label="Măsurători CSV"
+              title="Măsurători spreadsheet"
+              aria-label="Măsurători spreadsheet"
               aria-pressed={csvEditorOpen}
             >
               <Table2 size={16} strokeWidth={2.25} aria-hidden />
-              <span className="chip-label" aria-hidden>CSV</span>
+              <span className="chip-label" aria-hidden>Sheets</span>
             </button>
           ) : null}
           <button type="button" className={`chip-btn ${editsOpen ? "on" : ""}`} onClick={toggleEdits} title={editsLabel} aria-label={editsLabel} aria-pressed={editsOpen}>
