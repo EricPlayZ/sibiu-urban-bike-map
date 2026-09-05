@@ -1,16 +1,10 @@
 import { hasAnyEdit, LAYER_COLORS, resolveStreetMeasurement, streetHasDoorZoneBikeLane, streetHasIllegalParking, streetHasSafeBikeLane, featureHasReservedParking, type Measurement } from "./space";
 import { streetSchoolSlugs } from "./schoolCatchment";
 import { schoolColor } from "./schoolColors";
+import { buildingLegendItems } from "./buildingTypes";
 import { BIKE_DOOR_LABEL, BIKE_SAFE_LABEL, type LayerVisibility } from "./layers";
 
 export type LegendSwatch = { key: string; color: string; label: string };
-
-const BUILDING_ITEMS: LegendSwatch[] = [
-  { key: "casa", color: "#2f9e44", label: "Casă" },
-  { key: "bloc", color: "#e03131", label: "Bloc" },
-  { key: "altceva", color: "#868e96", label: "Altceva" },
-  { key: "necunoscut", color: "#ced4da", label: "Necunoscut" },
-];
 
 export function mapLegendItems(opts: {
   layers: LayerVisibility;
@@ -38,7 +32,7 @@ export function mapLegendItems(opts: {
 
   const layerItems: LegendSwatch[] = [];
   if (layers.buildings) {
-    layerItems.push(...BUILDING_ITEMS);
+    layerItems.push(...buildingLegendItems());
   } else {
     const safeBike = resolved.some(({ props, m }) => streetHasSafeBikeLane(props, m));
     const doorBike = resolved.some(({ props, m }) => streetHasDoorZoneBikeLane(props, m));

@@ -9,7 +9,13 @@ import {
   purgeExcelSeedMeasurements,
 } from "./lib/store";
 import { applyLocalEditsToCollection, fetchCommittedLocalEdits } from "./lib/localEdits";
-import { buildingTypesFromFile, parseBuildingEditsFile, type BuildingType } from "./lib/buildingEdits";
+import { buildingTypesFromFile, parseBuildingEditsFile } from "./lib/buildingEdits";
+import {
+  buildingTypeMeta,
+  inferBuildingTypeFromOsm,
+  isClassifiedBuildingType,
+  normalizeBuildingType,
+} from "./lib/buildingTypes";
 import { streetSchoolSlugs } from "./lib/schoolCatchment";
 import {
   acquireLock,
@@ -208,12 +214,24 @@ function paintBuildingTypes(buildings: GeoJSON.FeatureCollection | null, types: 
   return {
     type: "FeatureCollection" as const,
     features: buildings.features.map((f) => {
-      const id = String((f.properties as { bid?: string } | null)?.bid || "");
       const properties = { ...(f.properties || {}) } as Record<string, unknown>;
-      if (id && types[id]) properties.ubr_type = types[id].type;
+      const id = String(properties.bid || "");
+      const osm = String(properties.building || "");
+      const saved = id ? normalizeBuildingType(types[id]?.type) : null;
+      if (saved) properties.ubr_type = saved;
+      else if (osm) properties.ubr_type = inferBuildingTypeFromOsm(osm);
+      else properties.ubr_type = normalizeBuildingType(properties.ubr_type) ?? "necunoscut";
       return { ...f, properties };
     }),
   };
+}
+
+function buildingsNeedTypeReload(buildings: GeoJSON.FeatureCollection | null) {
+  if (!buildings) return true;
+  return buildings.features.some((f) => {
+    const t = String((f.properties as { ubr_type?: string } | null)?.ubr_type || "");
+    return t === "bloc" || t === "altceva";
+  });
 }
 
 function applyTeamEvent(ev: TeamEvent) {
@@ -234,7 +252,10 @@ function applyTeamEvent(ev: TeamEvent) {
     return;
   }
   if (ev.type === "building_upsert") {
-    const types = { ...st.buildingTypes, [ev.id]: { type: ev.buildingType } };
+    const types = {
+      ...st.buildingTypes,
+      [ev.id]: { type: normalizeBuildingType(ev.buildingType) ?? "necunoscut" },
+    };
     useApp.setState({ buildingTypes: types, buildings: paintBuildingTypes(st.buildings, types) });
     return;
   }
@@ -668,7 +689,7 @@ export const useApp = create<AppState>((set, get) => ({
     }),
   selectBuilding: (id, type) =>
     set({
-      selected: { kind: "building", id, type },
+      selected: { kind: "building", id, type: normalizeBuildingType(type) ?? "necunoscut" },
       sheetOpen: true,
       filtersOpen: false,
       basemapOpen: false,
@@ -765,7 +786,7 @@ export const useApp = create<AppState>((set, get) => ({
 
   setBuildingType: async (id, type) => {
     if (!get().teamAuthed) return;
-    if (type !== "casa" && type !== "bloc" && type !== "altceva" && type !== "necunoscut") return;
+    if (!isClassifiedBuildingType(type)) return;
     const prevTypes = get().buildingTypes;
     const prevBuildings = get().buildings;
     const prevSelected = get().selected;
@@ -779,8 +800,8 @@ export const useApp = create<AppState>((set, get) => ({
       selected,
     });
     try {
-      await putBuilding(id, type as BuildingType, prevTypes[id] ? "*" : undefined);
-      get().showToast(`Clădire: ${type}`);
+      await putBuilding(id, type, prevTypes[id] ? "*" : undefined);
+      get().showToast(`Clădire: ${buildingTypeMeta(type).label}`);
     } catch {
       set({ buildingTypes: prevTypes, buildings: prevBuildings, selected: prevSelected });
       get().showToast("Nu am putut salva tipul clădirii");
@@ -788,22 +809,17 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   ensureBuildings: async () => {
-    if (get().buildings) return;
+    if (!buildingsNeedTypeReload(get().buildings)) return;
     set({ loadingMsg: "Încărcăm clădirile…" });
     const raw = (await fetch("./buildings.geojson").then((r) => r.json())) as GeoJSON.FeatureCollection;
     const types = get().buildingTypes;
     const features = raw.features.map((f, i) => {
       const id = makeBuildingId(f, i);
       const osm = String((f.properties as { building?: string })?.building || "").toLowerCase();
-      let t = types[id]?.type;
-      if (!t) {
-        if (["house", "detached", "semidetached_house", "bungalow", "villa"].includes(osm)) t = "casa";
-        else if (["apartments", "residential", "dormitory", "terrace"].includes(osm)) t = "bloc";
-        else t = "necunoscut";
-      }
+      const t = normalizeBuildingType(types[id]?.type) ?? inferBuildingTypeFromOsm(osm);
       return {
         type: "Feature" as const,
-        properties: { bid: id, ubr_type: t },
+        properties: { bid: id, building: osm, ubr_type: t },
         geometry: f.geometry,
       };
     });

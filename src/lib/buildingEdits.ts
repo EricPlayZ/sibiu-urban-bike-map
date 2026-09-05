@@ -1,7 +1,7 @@
-export const BUILDING_EDITS_REL = "data/building-edits.json";
+import { normalizeBuildingType, type BuildingType } from "./buildingTypes";
 
-export const BUILDING_TYPES = ["casa", "bloc", "altceva", "necunoscut"] as const;
-export type BuildingType = (typeof BUILDING_TYPES)[number];
+export { isBuildingType, normalizeBuildingType, type BuildingType } from "./buildingTypes";
+export const BUILDING_EDITS_REL = "data/building-edits.json";
 
 export type BuildingEditsFile = {
   version: 1;
@@ -11,10 +11,6 @@ export type BuildingEditsFile = {
 
 function isForbiddenKey(key: string) {
   return key === "__proto__" || key === "constructor" || key === "prototype";
-}
-
-export function isBuildingType(v: unknown): v is BuildingType {
-  return typeof v === "string" && (BUILDING_TYPES as readonly string[]).includes(v);
 }
 
 export function emptyBuildingEdits(): BuildingEditsFile {
@@ -35,13 +31,14 @@ export function parseBuildingEditsFile(data: unknown): BuildingEditsFile {
   for (const [id, value] of Object.entries(raw)) {
     if (id === "version" || id === "updated_at" || id === "edits") continue;
     if (isForbiddenKey(id)) continue;
-    const type =
+    const rawType =
       value && typeof value === "object" && !Array.isArray(value)
         ? (value as { type?: unknown }).type
         : typeof value === "string"
           ? value
           : null;
-    if (!isBuildingType(type)) continue;
+    const type = normalizeBuildingType(rawType);
+    if (!type) continue;
     file.edits[id] = { type };
   }
   return file;
@@ -56,3 +53,4 @@ export function buildingTypesFromFile(file: BuildingEditsFile): Record<string, {
   for (const [id, v] of Object.entries(file.edits)) out[id] = { type: v.type };
   return out;
 }
+

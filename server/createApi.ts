@@ -20,7 +20,7 @@ import { createLockTable, lockKey, type LockKind } from "./locks";
 import { createSseHub } from "./sse";
 import { isSafeId } from "./ids";
 import { pathnameOf, readBody, sendEmpty, sendJson } from "./http";
-import { isBuildingType } from "../src/lib/buildingEdits";
+import { normalizeBuildingType } from "../src/lib/buildingEdits";
 
 const SMALL = 256 * 1024;
 const LARGE = 1024 * 1024;
@@ -248,13 +248,14 @@ export function createApi(config: ApiConfig) {
         const session = requireSession(req, res);
         if (!session) return true;
         const raw = JSON.parse((await readBody(req, SMALL)).toString("utf8")) as { type?: unknown };
-        if (!isBuildingType(raw.type)) {
+        const type = normalizeBuildingType(raw.type);
+        if (!type) {
           sendJson(res, 400, { error: "bad_type" });
           return true;
         }
         try {
-          const saved = await files.putBuilding(bid, raw.type, headerMatch(req));
-            sse.send({ type: "building_upsert", id: bid, buildingType: raw.type, by: session.name });
+          const saved = await files.putBuilding(bid, type, headerMatch(req));
+            sse.send({ type: "building_upsert", id: bid, buildingType: type, by: session.name });
           sendJson(res, 200, saved);
         } catch (e) {
           handleWriteError(res, e);

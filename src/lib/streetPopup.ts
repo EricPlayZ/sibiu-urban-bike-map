@@ -1,3 +1,4 @@
+import { buildingTypeMeta } from "./buildingTypes";
 import { BIKE_DOOR_LABEL, BIKE_SAFE_LABEL } from "./layers";
 import { streetAssignedToSchool, streetSchoolSlugs } from "./schoolCatchment";
 import { schoolColor } from "./schoolColors";
@@ -33,7 +34,9 @@ const ICONS = {
   empty: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.5 12h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
   photo: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.75"/><circle cx="9" cy="11" r="2" fill="none" stroke="currentColor" stroke-width="1.75"/><path d="m7.5 17 3.2-3.6a1.5 1.5 0 0 1 2.2 0L16 16l1.2-1.3a1.5 1.5 0 0 1 2.2.1L21 17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
+  homes: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 11.2 8 6.2l5.5 5V20H2.5v-8.8Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11 12.2 16.5 7.2 22 12.2V20h-8.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
   building: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V5.5A1.5 1.5 0 0 1 5.5 4H14a1.5 1.5 0 0 1 1.5 1.5V21M10 21V11h8.5A1.5 1.5 0 0 1 20 12.5V21M8 8h.01M8 12h.01M12 8h.01M12 12h.01M16 14h.01M16 17h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+  tower: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 21V4.5A1.5 1.5 0 0 1 8.5 3h7A1.5 1.5 0 0 1 17 4.5V21M7 21h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 7h.01M14 7h.01M10 11h.01M14 11h.01M10 15h.01M14 15h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
   package: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 7.5v9L12 21 4 16.5v-9L12 3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 12 20 7.5M12 12v9M12 12 4 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
   help: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.6 9.2a2.6 2.6 0 1 1 3.7 2.4c-.7.4-1.3.9-1.3 1.9M12 17.2h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
 } as const;
@@ -163,13 +166,7 @@ export function schoolMarkerHtml(name: string, color = "#5b6cff") {
 
 /** Popup MapLibre pentru clădire (vizualizare — fără placeholder foto). */
 export function buildingPopupHtml(type: string) {
-  const meta: Record<string, { label: string; color: string; blurb: string; icon: keyof typeof ICONS }> = {
-    casa: { label: "Casă", color: "#2f9e44", blurb: "Casă", icon: "home" },
-    bloc: { label: "Bloc", color: "#e03131", blurb: "Bloc", icon: "building" },
-    altceva: { label: "Altceva", color: "#868e96", blurb: "Altă categorie decât casă / bloc", icon: "package" },
-    necunoscut: { label: "Necunoscut", color: "#ced4da", blurb: "Neclasificat încă", icon: "help" },
-  };
-  const current = meta[type] || meta.necunoscut;
+  const current = buildingTypeMeta(type);
 
   return `<div class="map-popup map-popup-bldg">
     <div class="mp-body">
@@ -182,7 +179,7 @@ export function buildingPopupHtml(type: string) {
           <span class="mp-ico" style="color:${current.color}">${ICONS[current.icon]}</span>
           <div class="mp-copy">
             <span class="mp-label">Tip</span>
-            <span class="mp-value">${escapeHtml(current.blurb)}</span>
+            <span class="mp-value">${escapeHtml(current.label)}</span>
           </div>
         </div>
       </div>

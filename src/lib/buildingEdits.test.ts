@@ -9,11 +9,13 @@ describe("building edits file", () => {
       edits: {
         b_osm_1: { type: "casa" },
         b_osm_2: { type: "spaceship" },
+        b_osm_3: { type: "bloc" },
         constructor: { type: "bloc" },
       },
     });
     expect(parsed.edits.b_osm_1).toEqual({ type: "casa" });
     expect(parsed.edits.b_osm_2).toBeUndefined();
+    expect(parsed.edits.b_osm_3).toEqual({ type: "bloc_4" });
     expect(Object.hasOwn(parsed.edits, "constructor")).toBe(false);
     const round = parseBuildingEditsFile(JSON.parse(serializeBuildingEditsFile(parsed)));
     expect(round.edits.b_osm_1).toEqual({ type: "casa" });

@@ -1,12 +1,13 @@
 import { FormEvent, useEffect, useLayoutEffect, useMemo, useState, type CSSProperties } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Home, Building2, Package, HelpCircle, Pencil, X, Ruler, Road, Car, Footprints, ParkingSquare, Bike, Trees, TriangleAlert, Save, Trash2 } from "lucide-react";
+import { Home, Building2, Building, HelpCircle, Pencil, X, Ruler, Road, Car, Footprints, ParkingSquare, Bike, Trees, TriangleAlert, Save, Trash2 } from "lucide-react";
 import { useApp } from "../store";
 import { isDesktopViewport } from "../lib/breakpoints";
 import { panelSpring, springExit } from "../lib/uiMotion";
 import { streetSchoolSlugs } from "../lib/schoolCatchment";
 import { BIKE_DOOR_LABEL, BIKE_SAFE_LABEL } from "../lib/layers";
 import { FORM_FIELDS, pct, spaceShares, featureHasIllegalParking, featureHasReservedParking, resolveStreetMeasurement, streetBikeLaneStatus, streetHasBikeLane, type Measurement } from "../lib/space";
+import { BUILDING_CLASSIFIED_TYPES, buildingTypeMeta, normalizeBuildingType, type BuildingTypeMeta } from "../lib/buildingTypes";
 import { FadeScrim } from "./FadeScrim";
 
 const FIELD_ICONS: Partial<Record<keyof Measurement, typeof Ruler>> = {
@@ -289,15 +290,18 @@ function StreetEditor({
     );
 }
 
+const BUILDING_ICONS: Record<BuildingTypeMeta["icon"], typeof Home> = {
+    home: Home,
+    homes: Building2,
+    building: Building2,
+    tower: Building,
+    help: HelpCircle,
+};
+
 function BuildingEditor({ id, type, onPick, onClose, editMode, lockHolder }: { id: string; type: string; onPick: (id: string, t: string) => void; onClose: () => void; editMode: boolean; lockHolder?: string | null }) {
-    const meta: Record<string, { label: string; color: string; blurb: string; Icon: typeof Home }> = {
-        casa: { label: "Casă", color: "#2f9e44", blurb: "Categorie: casă", Icon: Home },
-        bloc: { label: "Bloc", color: "#e03131", blurb: "Categorie: bloc", Icon: Building2 },
-        altceva: { label: "Altceva", color: "#868e96", blurb: "Altă categorie decât casă / bloc", Icon: Package },
-        necunoscut: { label: "Necunoscut", color: "#ced4da", blurb: "Neclasificat încă — alege tipul dacă știi", Icon: HelpCircle },
-    };
-    const current = meta[type] || meta.necunoscut;
-    const CurrentIcon = current.Icon;
+    const currentType = normalizeBuildingType(type) ?? "necunoscut";
+    const current = buildingTypeMeta(currentType);
+    const CurrentIcon = BUILDING_ICONS[current.icon];
 
     return (
         <div className="sheet-body bldg-sheet">
@@ -320,14 +324,14 @@ function BuildingEditor({ id, type, onPick, onClose, editMode, lockHolder }: { i
                 <>
                     <div className="field-label">Alege tipul</div>
                     <div className="bgrid">
-                        {(Object.keys(meta) as (keyof typeof meta)[]).map((t) => {
-                            const item = meta[t];
-                            const Icon = item.Icon;
+                        {BUILDING_CLASSIFIED_TYPES.map((t) => {
+                            const item = buildingTypeMeta(t);
+                            const Icon = BUILDING_ICONS[item.icon];
                             return (
                                 <button
                                     key={t}
                                     type="button"
-                                    className={type === t ? "on" : ""}
+                                    className={currentType === t ? "on" : ""}
                                     onClick={() => {
                                         onPick(id, t);
                                         onClose();

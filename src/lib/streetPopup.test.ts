@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { streetPopupHtml } from "./streetPopup";
+import { buildingPopupHtml, streetPopupHtml } from "./streetPopup";
 
 const schools: GeoJSON.FeatureCollection = {
   type: "FeatureCollection",
@@ -25,5 +25,18 @@ describe("streetPopupHtml", () => {
     expect(html).toContain("Colegiul Național Pedagogic");
     expect(html).toContain("Constantin Noica");
     expect(html).not.toMatch(/Șaguna',\s*Liceul/);
+  });
+});
+
+describe("buildingPopupHtml", () => {
+  it("puts the legend name in Tip, and maps leftover bloc to 4 etaje", () => {
+    const casa = buildingPopupHtml("casa");
+    expect(casa).toMatch(/mp-value">Casă individuală</);
+    expect(casa).not.toContain("Casă unifamilială");
+    expect(buildingPopupHtml("casa_multi")).toMatch(/mp-value">Casă cu mai multe locuințe</);
+    expect(buildingPopupHtml("bloc_4")).toMatch(/mp-value">Bloc 4 etaje</);
+    expect(buildingPopupHtml("bloc_10")).toMatch(/mp-value">Bloc 10 etaje</);
+    expect(buildingPopupHtml("bloc")).toMatch(/mp-value">Bloc 4 etaje</);
+    expect(buildingPopupHtml("apartments")).toMatch(/mp-value">Necunoscut</);
   });
 });

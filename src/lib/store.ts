@@ -1,4 +1,5 @@
 import { FORM_FIELDS, type Measurement } from "./space";
+import { normalizeBuildingType } from "./buildingTypes";
 
 const KEY_M = "ubr_v2_measurements";
 const KEY_N = "ubr_v2_neighborhoods";
@@ -63,7 +64,13 @@ export function saveCustomNeighborhoods(fc: GeoJSON.FeatureCollection) {
 }
 
 export function loadBuildingTypes(): Record<string, { type: string }> {
-  return read(KEY_B, {});
+  const raw = read<Record<string, { type?: unknown }>>(KEY_B, {});
+  const out: Record<string, { type: string }> = {};
+  for (const [id, value] of Object.entries(raw)) {
+    const type = normalizeBuildingType(value?.type);
+    if (type) out[id] = { type };
+  }
+  return out;
 }
 export function saveBuildingType(id: string, type: string) {
   const all = loadBuildingTypes();

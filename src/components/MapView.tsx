@@ -6,6 +6,7 @@ import { BASEMAPS } from "../lib/basemaps";
 import { CompassDialControl } from "../lib/northControl";
 import { enableChasingWheelZoom } from "../lib/chasingWheelZoom";
 import { LAYER_COLORS, type BasemapId } from "../lib/space";
+import { buildingFillColorExpr } from "../lib/buildingTypes";
 import { buildingPopupHtml, neighborhoodPopupHtml, schoolMarkerHtml, schoolPopupHtml, streetPopupHtml } from "../lib/streetPopup";
 import {
   addSearchHighlightLayers,
@@ -856,6 +857,7 @@ function addBuildingLayers(map: Map) {
   if (!map.getSource(BLD)) map.addSource(BLD, { type: "geojson", data });
   else (map.getSource(BLD) as GeoJSONSource).setData(data);
 
+  const fillColor = buildingFillColorExpr() as maplibregl.ExpressionSpecification;
   if (!map.getLayer(BLD + "-fill")) {
     map.addLayer({
       id: BLD + "-fill",
@@ -863,10 +865,12 @@ function addBuildingLayers(map: Map) {
       source: BLD,
       layout: { visibility: "none" },
       paint: {
-        "fill-color": ["match", ["get", "ubr_type"], "casa", "#2f9e44", "bloc", "#e03131", "altceva", "#868e96", "#ced4da"],
+        "fill-color": fillColor,
         "fill-opacity": 0.58,
       },
     });
+  } else {
+    map.setPaintProperty(BLD + "-fill", "fill-color", fillColor);
   }
   if (!map.getLayer(BLD + "-line")) {
     map.addLayer({
