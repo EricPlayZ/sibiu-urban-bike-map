@@ -34,7 +34,9 @@ import { deriveStreetFixes, recordsHaveFix, type FixDrift, type StreetFixesFile 
 import { acquireLock, releaseLock } from "../lib/teamApi";
 import { BIKE_DOOR_LABEL, BIKE_SAFE_LABEL } from "../lib/layers";
 import { LAYER_COLORS } from "../lib/space";
+import { panelSpring } from "../lib/uiMotion";
 import { useApp } from "../store";
+import { FadeScrim } from "./FadeScrim";
 
 const HEADER_SHORT: Record<string, string> = {
   nume: "Nume",
@@ -275,14 +277,16 @@ export function CsvEditorPanel() {
   return (
     <AnimatePresence>
       {open && (
-        <>
-          <button type="button" className="scrim csv-editor-scrim" onClick={requestClose} aria-label="Închide editorul de măsurători" />
+        <FadeScrim key="csv-scrim" className="scrim csv-editor-scrim" onClick={requestClose} label="Închide editorul de măsurători" />
+      )}
+      {open && (
           <motion.aside
+            key="csv-panel"
             className="panel csv-editor-panel"
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 12, pointerEvents: "none" }}
-            transition={{ type: "spring", stiffness: 360, damping: 32 }}
+            transition={panelSpring}
             role="dialog"
             aria-modal="true"
             aria-labelledby="csv-editor-title"
@@ -452,7 +456,6 @@ export function CsvEditorPanel() {
               </div>
             )}
           </motion.aside>
-        </>
       )}
     </AnimatePresence>
   );

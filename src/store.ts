@@ -145,6 +145,7 @@ type AppState = {
   closeStats: () => void;
   closeLegend: () => void;
   openLegend: () => void;
+  toggleLegend: () => void;
   toggleBasemap: () => void;
   toggleStats: () => void;
   toggleTheme: () => void;
@@ -561,6 +562,11 @@ export const useApp = create<AppState>((set, get) => ({
   openLegend: () => {
     persistLegendOpen(true);
     set({ legendOpen: true });
+  },
+  toggleLegend: () => {
+    const next = !get().legendOpen;
+    persistLegendOpen(next);
+    set({ legendOpen: next });
   },
   toggleBasemap: () =>
     set({ basemapOpen: !get().basemapOpen, filtersOpen: false, themeOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false, csvEditorOpen: false, searchOpen: false }),

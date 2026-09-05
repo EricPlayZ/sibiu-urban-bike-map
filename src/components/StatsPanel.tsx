@@ -12,6 +12,7 @@ import {
   streetHasSafeBikeLane,
 } from "../lib/space";
 import { streetSchoolSlugs } from "../lib/schoolCatchment";
+import { panelSpring } from "../lib/uiMotion";
 
 function formatKm(meters: number) {
   const km = meters / 1000;
@@ -75,7 +76,7 @@ export function StatsPanel() {
           initial={{ x: 28, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 20, opacity: 0, pointerEvents: "none" }}
-          transition={{ type: "spring", stiffness: 360, damping: 30 }}
+          transition={panelSpring}
         >
           <div className="panel-head">
             <h2>Statistici</h2>

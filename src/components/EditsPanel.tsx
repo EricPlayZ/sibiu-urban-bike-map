@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Pencil, Trash2, X } from "lucide-react";
 import { useApp } from "../store";
+import { panelSpring } from "../lib/uiMotion";
 import { hasAnyEdit } from "../lib/space";
 
 export function EditsPanel() {
@@ -35,7 +36,7 @@ export function EditsPanel() {
           initial={{ x: 28, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 20, opacity: 0, pointerEvents: "none" }}
-          transition={{ type: "spring", stiffness: 360, damping: 30 }}
+          transition={panelSpring}
         >
           <div className="panel-head">
             <h2>Editări locale</h2>

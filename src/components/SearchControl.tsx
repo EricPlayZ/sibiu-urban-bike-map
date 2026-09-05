@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { GraduationCap, MapPin, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { isDesktopViewport } from "../lib/breakpoints";
+import { panelSpring } from "../lib/uiMotion";
 import { useApp } from "../store";
 import {
   buildSearchIndex,
@@ -153,6 +154,7 @@ export function SearchControl() {
             initial={{ opacity: 0, scale: 0.96, y: -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: -6, pointerEvents: "none", transition: { pointerEvents: { duration: 0 } } }}
+            transition={panelSpring}
           >
             <div className="search-field">
               <Search size={16} strokeWidth={2.25} aria-hidden />

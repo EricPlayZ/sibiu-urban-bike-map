@@ -2,7 +2,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { Bike, CheckCheck, Eye, GraduationCap, Leaf, ParkingSquare, Ruler, X } from "lucide-react";
 import { DESKTOP_MEDIA } from "../lib/breakpoints";
+import { panelSpring } from "../lib/uiMotion";
 import { useApp } from "../store";
+import { FadeScrim } from "./FadeScrim";
 import { schoolColor } from "../lib/schoolColors";
 import { LAYER_META, layersMatchFocus } from "../lib/layers";
 
@@ -54,13 +56,13 @@ export function FiltersPanel() {
   const bikeOnlyOn = layersMatchFocus(layers, "bikeOnly");
 
   return (
-    <>
+    <AnimatePresence>
       {open && desktop && (
-        <button type="button" className="scrim" onClick={() => useApp.getState().closeFilters()} aria-label="Închide filtre" />
+        <FadeScrim key="filters-scrim" onClick={() => useApp.getState().closeFilters()} label="Închide filtre" />
       )}
-      <AnimatePresence>
-        {open && (
+      {open && (
           <motion.aside
+            key="filters-panel"
             className="panel filters-panel"
             initial={desktop ? { x: 24, opacity: 0 } : { y: 16, opacity: 0 }}
             animate={desktop ? { x: 0, opacity: 1 } : { y: 0, opacity: 1 }}
@@ -68,12 +70,11 @@ export function FiltersPanel() {
               ...(desktop ? { x: 16, opacity: 0 } : { y: 12, opacity: 0 }),
               pointerEvents: "none",
               transition: {
-                type: "spring",
-                stiffness: 380,
-                damping: 32,
+                ...panelSpring,
                 pointerEvents: { duration: 0 },
               },
             }}
+            transition={panelSpring}
           >
             <div className="panel-head">
               <h2>Filtre & straturi</h2>
@@ -189,8 +190,7 @@ export function FiltersPanel() {
             </div>
           </motion.aside>
         )}
-      </AnimatePresence>
-    </>
+    </AnimatePresence>
   );
 }
 

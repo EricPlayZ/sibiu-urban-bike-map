@@ -18,6 +18,7 @@ import {
   Table2,
 } from "lucide-react";
 import { useApp } from "../store";
+import { panelSpring } from "../lib/uiMotion";
 import { SearchControl } from "./SearchControl";
 import { BASEMAPS } from "../lib/basemaps";
 import type { BasemapId } from "../lib/space";
@@ -150,7 +151,7 @@ export function TopBar() {
 
       <AnimatePresence>
         {editMode && (
-          <motion.div className="edit-rail" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+          <motion.div className="edit-rail" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={panelSpring}>
             <button type="button" onClick={doExport}>
               <Download size={16} />
               Export JSON
@@ -170,6 +171,7 @@ export function TopBar() {
             initial={{ opacity: 0, scale: 0.96, y: -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: -6, pointerEvents: "none", transition: { pointerEvents: { duration: 0 } } }}
+            transition={panelSpring}
           >
             <div className="pop-title">
               <MapIcon size={18} /> Fundal hartă
@@ -192,6 +194,7 @@ export function TopBar() {
             initial={{ opacity: 0, scale: 0.96, y: -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: -6, pointerEvents: "none", transition: { pointerEvents: { duration: 0 } } }}
+            transition={panelSpring}
           >
             <div className="pop-title">Temă interfață</div>
             <div className="theme-grid">

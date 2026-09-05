@@ -3,9 +3,11 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Home, Building2, Package, HelpCircle, Pencil, X, Ruler, Road, Car, Footprints, ParkingSquare, Bike, Trees, TriangleAlert, Save, Trash2 } from "lucide-react";
 import { useApp } from "../store";
 import { isDesktopViewport } from "../lib/breakpoints";
+import { panelSpring } from "../lib/uiMotion";
 import { streetSchoolSlugs } from "../lib/schoolCatchment";
 import { BIKE_DOOR_LABEL, BIKE_SAFE_LABEL } from "../lib/layers";
 import { FORM_FIELDS, pct, spaceShares, featureHasIllegalParking, featureHasReservedParking, resolveStreetMeasurement, streetBikeLaneStatus, streetHasBikeLane, type Measurement } from "../lib/space";
+import { FadeScrim } from "./FadeScrim";
 
 const FIELD_ICONS: Partial<Record<keyof Measurement, typeof Ruler>> = {
     length_m: Ruler,
@@ -72,11 +74,13 @@ export function DetailSheet() {
     }, [open]);
 
     return (
-        <>
-            {open && selected && <button type="button" className="sheet-scrim" onClick={closeSheet} aria-label="Închide panoul" />}
-            <AnimatePresence>
-                {open && selected && (
+        <AnimatePresence>
+            {open && selected && (
+                <FadeScrim key="sheet-scrim" className="sheet-scrim" onClick={closeSheet} label="Închide panoul" />
+            )}
+            {open && selected && (
                     <motion.div
+                        key="sheet"
                         className="sheet"
                         initial={desktop ? { opacity: 0, y: 16 } : { y: "110%" }}
                         animate={desktop ? { opacity: 1, y: 0 } : { y: 0 }}
@@ -84,13 +88,11 @@ export function DetailSheet() {
                             ...(desktop ? { opacity: 0, y: 12 } : { y: "110%" }),
                             pointerEvents: "none",
                             transition: {
-                                type: "spring",
-                                stiffness: 380,
-                                damping: 36,
+                                ...panelSpring,
                                 pointerEvents: { duration: 0 },
                             },
                         }}
-                        transition={{ type: "spring", stiffness: 380, damping: 36 }}
+                        transition={panelSpring}
                         role="dialog"
                         aria-modal="true"
                     >
@@ -120,9 +122,8 @@ export function DetailSheet() {
                             <BuildingEditor id={selected.id} type={selected.type} onPick={(id, t) => void setBuildingType(id, t)} onClose={closeSheet} editMode={canEdit} lockHolder={!entityLock.held ? entityLock.holder : null} />
                         )}
                     </motion.div>
-                )}
-            </AnimatePresence>
-        </>
+            )}
+        </AnimatePresence>
     );
 }
 
