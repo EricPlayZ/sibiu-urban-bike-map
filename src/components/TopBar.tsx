@@ -27,7 +27,7 @@ import { layersMatchPreset } from "../lib/layers";
 
 export function TopBar() {
   const editMode = useApp((s) => s.editMode);
-  const setEditMode = useApp((s) => s.setEditMode);
+  const toggleEditAccess = useApp((s) => s.toggleEditAccess);
   const setViewMode = useApp((s) => s.setViewMode);
   const layers = useApp((s) => s.layers);
   const toggleFilters = useApp((s) => s.toggleFilters);
@@ -59,6 +59,7 @@ export function TopBar() {
   const importLabel = importErrorCount > 0 ? `Import (${importErrorCount})` : "Import";
   const editsLabel = editsCount > 0 ? `Editări (${editsCount})` : "Editări";
   const editLabel = editMode ? "Editare ON" : "Editare";
+  const pencilLabel = teamAuthed ? editLabel : "Acces editare";
 
   return (
     <>
@@ -131,12 +132,19 @@ export function TopBar() {
                 <ListTree size={16} strokeWidth={2.25} aria-hidden />
                 <span className="chip-label" aria-hidden>{editsLabel}</span>
               </button>
-              <button type="button" className={`chip-btn edit ${editMode ? "on" : ""}`} onClick={() => setEditMode(!editMode)} title={editLabel} aria-label={editLabel} aria-pressed={editMode}>
-                <Pencil size={16} strokeWidth={2.25} aria-hidden />
-                <span className="chip-label" aria-hidden>{editLabel}</span>
-              </button>
             </>
           ) : null}
+          <button
+            type="button"
+            className={`chip-btn edit ${teamAuthed && editMode ? "on" : ""}`}
+            onClick={toggleEditAccess}
+            title={pencilLabel}
+            aria-label={pencilLabel}
+            aria-pressed={teamAuthed && editMode}
+          >
+            <Pencil size={16} strokeWidth={2.25} aria-hidden />
+            <span className="chip-label" aria-hidden>{pencilLabel}</span>
+          </button>
         </div>
       </motion.header>
 
@@ -200,7 +208,6 @@ export function TopBar() {
                 </button>
               ))}
             </div>
-            <p className="hint-text">„Sistem” urmează setarea OS / browser (Windows, macOS, iOS, Android, Linux).</p>
           </motion.div>
         )}
       </AnimatePresence>

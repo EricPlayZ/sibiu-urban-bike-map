@@ -1,3 +1,6 @@
+import { BIKE_DOOR_LABEL, BIKE_SAFE_LABEL } from "./layers";
+import { streetAssignedToSchool, streetSchoolSlugs } from "./schoolCatchment";
+import { schoolColor } from "./schoolColors";
 import {
   featureHasIllegalParking,
   featureHasReservedParking,
@@ -92,7 +95,7 @@ export function streetPopupHtml(
   const bike = streetHasBikeLane(props, measurement);
   const illegal = featureHasIllegalParking(props);
   const reserved = featureHasReservedParking(props);
-  const arondat = String(props.arondat || "").trim();
+  const arondari = streetSchoolSlugs(props);
 
   const media = photo
     ? `<div class="mp-media"><img src="${escapeHtml(photo)}" alt="" loading="lazy" /></div>`
@@ -102,25 +105,33 @@ export function streetPopupHtml(
 
   const rows: string[] = [];
   if (bikeStatus === "door") {
-    rows.push(row("bike", "bike", "Pistă pe carosabil", "Între carosabil și parcări"));
+    rows.push(row("bike", "bike", BIKE_DOOR_LABEL, "Da"));
   } else if (bikeStatus === "safe") {
-    rows.push(row("bike", "bike", "Pistă de biciclete", "Da"));
+    rows.push(row("bike", "bike", BIKE_SAFE_LABEL, "Da"));
   } else if (bikeStatus === "none") {
-    rows.push(row("off", "bike", "Pistă de biciclete", "Nu"));
+    rows.push(row("off", "bike", "Pistă biciclete", "Nu"));
   }
   if (illegal) rows.push(row("illegal", "illegal", "Parcare ilegală pe trotuar", "Da"));
   if (reserved) rows.push(row("reserved", "reserved", "Parcare amenajată pe trotuar", "Da"));
-  if (arondat) rows.push(row("school", "school", "Arondată la", schoolLabel(arondat, schools)));
-  if (!bike && !illegal && !reserved && !arondat && !spaceHtml) {
+  if (arondari.length) {
+    rows.push(
+      row("school", "school", "Arondată la", arondari.map((slug) => schoolLabel(slug, schools)).join(", "))
+    );
+  }
+  if (!bike && !illegal && !reserved && !arondari.length && !spaceHtml) {
     rows.push(row("muted", "empty", "Date stradă", "Nu există date specifice"));
   }
 
   const chips: string[] = [];
-  if (bikeStatus === "safe") chips.push(`<span class="mp-chip" style="--c:${LAYER_COLORS.bike}">Pistă</span>`);
-  if (bikeStatus === "door") chips.push(`<span class="mp-chip" style="--c:${LAYER_COLORS.bikeDoor}">Pe carosabil</span>`);
+  if (bikeStatus === "safe") chips.push(`<span class="mp-chip" style="--c:${LAYER_COLORS.bike}">${BIKE_SAFE_LABEL}</span>`);
+  if (bikeStatus === "door") chips.push(`<span class="mp-chip" style="--c:${LAYER_COLORS.bikeDoor}">${BIKE_DOOR_LABEL}</span>`);
   if (reserved) chips.push(`<span class="mp-chip" style="--c:${LAYER_COLORS.reserved}">Parcare</span>`);
   if (illegal) chips.push(`<span class="mp-chip" style="--c:${LAYER_COLORS.illegal}">Ilegal</span>`);
-  if (arondat) chips.push(`<span class="mp-chip" style="--c:${LAYER_COLORS.schoolAssign}">Școală</span>`);
+  if (arondari.length) {
+    for (const slug of arondari) {
+      chips.push(`<span class="mp-chip" style="--c:${schoolColor(slug)}">${escapeHtml(schoolLabel(slug, schools))}</span>`);
+    }
+  }
   if (spaceShares(measurement)) {
     const chipLabel = measurement?.source === "local" ? "Editată local" : "Măsurată";
     chips.push(`<span class="mp-chip" style="--c:${LAYER_COLORS.edited}">${chipLabel}</span>`);
@@ -137,9 +148,9 @@ export function streetPopupHtml(
   </div>`;
 }
 
-/** SVG marker școală — albastru indigo, contrast față de străzile portocalii arondate. */
-export function schoolMarkerHtml(name: string) {
-  return `<span class="school-pin" title="${escapeHtml(name)}">
+/** SVG marker școală — culoarea e cea a arondării pe hartă. */
+export function schoolMarkerHtml(name: string, color = "#5b6cff") {
+  return `<span class="school-pin" style="--school-c:${escapeHtml(color)}" title="${escapeHtml(name)}">
     <span class="school-pin-glow" aria-hidden="true"></span>
     <span class="school-pin-core" aria-hidden="true">
       <svg viewBox="0 0 24 24" width="18" height="18"><path d="M3 10.5 12 5l9 5.5-9 5.5L3 10.5Z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><path d="M7 13v4.2c2 1.4 8 1.4 10 0V13M19 11.5V16.5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -214,27 +225,21 @@ export function schoolPopupHtml(
 ) {
   const title = String(props.denumire || props.name || "Școală");
   const slug = String(props.slug || "");
-  const photo = String(props.photo_url || props.image_url || "").trim();
 
   const assigned = (streets?.features || []).filter((f) => {
     const p = (f.properties || {}) as Record<string, unknown>;
-    if (String(p.arondat || "") !== slug) return false;
+    if (!streetAssignedToSchool(p, slug)) return false;
     const cartier = String(p.cartier || "");
     return !cartier || neighborhoods.has(cartier);
   });
   const bike = assigned.filter((f) => streetHasBikeLane(f.properties as Record<string, unknown>)).length;
   const illegal = assigned.filter((f) => featureHasIllegalParking(f.properties as Record<string, unknown>)).length;
 
-  const media = photo
-    ? `<div class="mp-media"><img src="${escapeHtml(photo)}" alt="" loading="lazy" /></div>`
-    : `<div class="mp-media mp-media-empty" aria-hidden="true"><span class="mp-media-ico">${ICONS.photo}</span><span>Foto școală — în curând</span></div>`;
-
   return `<div class="map-popup">
-    ${media}
     <div class="mp-body">
       <strong class="mp-title">${escapeHtml(title)}</strong>
       <div class="mp-chips">
-        <span class="mp-chip" style="--c:${LAYER_COLORS.schoolAssign}">Școală</span>
+        <span class="mp-chip" style="--c:${schoolColor(slug)}">Școală</span>
         <span class="mp-chip" style="--c:#5b6cff">${assigned.length} străzi</span>
       </div>
       <div class="mp-list">

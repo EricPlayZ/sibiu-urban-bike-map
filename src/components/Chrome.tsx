@@ -39,7 +39,7 @@ export function MobileDock() {
   const setViewMode = useApp((s) => s.setViewMode);
   const layers = useApp((s) => s.layers);
   const editMode = useApp((s) => s.editMode);
-  const setEditMode = useApp((s) => s.setEditMode);
+  const toggleEditAccess = useApp((s) => s.toggleEditAccess);
   const toggleFilters = useApp((s) => s.toggleFilters);
   const toggleBasemap = useApp((s) => s.toggleBasemap);
   const toggleStats = useApp((s) => s.toggleStats);
@@ -114,17 +114,21 @@ export function MobileDock() {
           <Layers size={18} strokeWidth={2.25} />
           <span>Hartă</span>
         </button>
+        <button
+          type="button"
+          className={teamAuthed && editMode ? "on" : ""}
+          onClick={toggleEditAccess}
+          aria-pressed={teamAuthed && editMode}
+          aria-label={teamAuthed ? (editMode ? "Editare ON" : "Editare") : "Acces editare"}
+        >
+          <Pencil size={18} strokeWidth={2.25} />
+          <span>Edit</span>
+        </button>
         {teamAuthed ? (
-          <>
-            <button type="button" className={editMode ? "on" : ""} onClick={() => setEditMode(!editMode)} aria-pressed={editMode}>
-              <Pencil size={18} strokeWidth={2.25} />
-              <span>Edit</span>
-            </button>
-            <button type="button" className={editsOpen ? "on" : ""} onClick={toggleEdits} aria-pressed={editsOpen}>
-              <ListTree size={18} strokeWidth={2.25} />
-              <span>Editări{editsCount > 0 ? ` (${editsCount})` : ""}</span>
-            </button>
-          </>
+          <button type="button" className={editsOpen ? "on" : ""} onClick={toggleEdits} aria-pressed={editsOpen}>
+            <ListTree size={18} strokeWidth={2.25} />
+            <span>Editări{editsCount > 0 ? ` (${editsCount})` : ""}</span>
+          </button>
         ) : null}
         <button type="button" className={themeOpen ? "on" : ""} onClick={toggleTheme} aria-pressed={themeOpen}>
           <ThemeIcon size={18} strokeWidth={2.25} />

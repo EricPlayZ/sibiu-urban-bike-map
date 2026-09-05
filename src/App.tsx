@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { MapView } from "./components/MapView";
 import { TopBar } from "./components/TopBar";
 import { FiltersPanel } from "./components/FiltersPanel";
 import { StatsPanel } from "./components/StatsPanel";
+import { MapLegend } from "./components/MapLegend";
 import { EditsPanel } from "./components/EditsPanel";
 import { CsvEditorPanel } from "./components/CsvEditorPanel";
 import { DetailSheet } from "./components/DetailSheet";
@@ -15,18 +16,10 @@ import { applyDocumentTheme } from "./lib/theme";
 export default function App() {
   const init = useApp((s) => s.init);
   const uiTheme = useApp((s) => s.uiTheme);
-  const [teamGate, setTeamGate] = useState(() => window.location.pathname.replace(/\/+$/, "") === "/echipa");
-
-  useEffect(() => {
-    const onPop = () => setTeamGate(window.location.pathname.replace(/\/+$/, "") === "/echipa");
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
 
   useEffect(() => {
     init().catch((e) => {
       console.error(e);
-      useApp.getState().showToast("Eroare la încărcare");
     });
   }, [init]);
 
@@ -42,6 +35,7 @@ export default function App() {
     <div className="app">
       <div className="atmosphere" aria-hidden />
       <MapView />
+      <MapLegend />
       <TopBar />
       <FiltersPanel />
       <StatsPanel />
@@ -52,7 +46,7 @@ export default function App() {
       <MobileDock />
       <Toast />
       <Loader />
-      {teamGate ? <TeamLogin /> : null}
+      <TeamLogin />
     </div>
   );
 }

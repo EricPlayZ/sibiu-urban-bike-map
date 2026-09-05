@@ -142,7 +142,6 @@ export function ImportReportPanel() {
               <h2>
                 <Bug size={18} strokeWidth={2.2} /> Import măsurători / OSM
               </h2>
-              <p className="sub">Potriviri măsurători ↔ OSM și arondare școli, pe cartier și stradă.</p>
             </div>
             <button type="button" className="icon-x" onClick={close} aria-label="Închide">
               <X size={18} />
@@ -198,7 +197,7 @@ export function ImportReportPanel() {
           </div>
           <p className="import-csv-files">
             Arondare: {report.catchment?.osmMatched ?? 0} segmente OSM cu școală · {report.catchment?.csvUnmatched ?? 0}{" "}
-            străzi CSV fără OSM · {report.catchment?.multiSchool ?? 0} multi-școală (păstrăm prima din CSV) ·{" "}
+            străzi CSV fără OSM · {report.catchment?.multiSchool ?? 0} multi-școală (toate școlile pe stradă) ·{" "}
             {report.catchment?.schoolUnmatched ?? 0} școli fără punct geojson.
           </p>
 

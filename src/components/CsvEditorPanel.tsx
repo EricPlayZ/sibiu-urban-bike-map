@@ -32,6 +32,7 @@ import {
 } from "../lib/csvFiles";
 import { deriveStreetFixes, recordsHaveFix, type FixDrift, type StreetFixesFile } from "../lib/streetFixes";
 import { acquireLock, releaseLock } from "../lib/teamApi";
+import { BIKE_DOOR_LABEL, BIKE_SAFE_LABEL } from "../lib/layers";
 import { LAYER_COLORS } from "../lib/space";
 import { useApp } from "../store";
 
@@ -61,8 +62,8 @@ function flagChips(flags: DerivedFlags) {
   const chips: { id: string; label: string; color: string }[] = [];
   if (flags.illgl_park) chips.push({ id: "illegal", label: "Ilegal pe trotuar", color: LAYER_COLORS.illegal });
   if (flags.rsrvd_park) chips.push({ id: "reserved", label: "Amenajată pe trotuar", color: LAYER_COLORS.reserved });
-  if (flags.bike_door) chips.push({ id: "door", label: "Pistă pe carosabil", color: LAYER_COLORS.bikeDoor });
-  else if (flags.bike_lane) chips.push({ id: "bike", label: "Pistă", color: LAYER_COLORS.bike });
+  if (flags.bike_door) chips.push({ id: "door", label: BIKE_DOOR_LABEL, color: LAYER_COLORS.bikeDoor });
+  else if (flags.bike_lane) chips.push({ id: "bike", label: BIKE_SAFE_LABEL, color: LAYER_COLORS.bike });
   if (flags.has_green) chips.push({ id: "green", label: "Verde", color: "#2f9e44" });
   return chips;
 }
@@ -292,10 +293,6 @@ export function CsvEditorPanel() {
                   <Table2 size={18} strokeWidth={2.25} aria-hidden />
                   Măsurători spreadsheet
                 </h2>
-                <p className="sub">
-                  Valorile sunt din Google Sheets, cu corecțiile din street-fixes.json deja aplicate. Rename / lățimi /
-                  omit se salvează acolo — nu în CSV. Flag-urile se citesc din lățimi.
-                </p>
               </div>
               <button type="button" className="icon-x" onClick={requestClose} aria-label="Închide">
                 <X size={18} strokeWidth={2.25} />

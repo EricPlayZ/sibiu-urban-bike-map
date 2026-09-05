@@ -1,21 +1,28 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { loginFailureMessage } from "../lib/teamApi";
 import { useApp } from "../store";
 
 export function TeamLogin() {
-  const teamAuthed = useApp((s) => s.teamAuthed);
-  const teamName = useApp((s) => s.teamName);
+  const open = useApp((s) => s.teamLoginOpen);
   const login = useApp((s) => s.teamLogin);
-  const logout = useApp((s) => s.teamLogout);
+  const closeTeamLogin = useApp((s) => s.closeTeamLogin);
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const goMap = () => {
-    window.history.replaceState(null, "", "/");
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  };
+  useEffect(() => {
+    if (!open) return;
+    setError(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeTeamLogin();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, closeTeamLogin]);
+
+  if (!open) return null;
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -24,7 +31,6 @@ export function TeamLogin() {
     try {
       await login(password, name);
       setPassword("");
-      goMap();
     } catch (err) {
       setError(loginFailureMessage(err));
     } finally {
@@ -33,62 +39,46 @@ export function TeamLogin() {
   };
 
   return (
-    <div className="team-login">
-      <div className="team-login-card">
-        {teamAuthed ? (
-          <>
-            <h1>Echipă</h1>
-            <p className="sub">Ești conectat ca {teamName}.</p>
-            <div className="actions">
-              <button type="button" className="btn primary" onClick={goMap}>
-                Mergi la hartă
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={async () => {
-                  await logout();
-                }}
-              >
-                Ieși
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <h1>Acces echipă</h1>
-            <p className="sub">Editarea hărții e doar pentru echipă. Vizitatorii nu văd acest ecran.</p>
-            <form className="team-login-form" onSubmit={(e) => void onSubmit(e)}>
-              <label className="field">
-                Nume (îl văd colegii la lock)
-                <input
-                  type="text"
-                  name="name"
-                  autoComplete="nickname"
-                  maxLength={24}
-                  value={name}
-                  onChange={(ev) => setName(ev.target.value)}
-                  required
-                />
-              </label>
-              <label className="field">
-                Parolă
-                <input
-                  type="password"
-                  name="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(ev) => setPassword(ev.target.value)}
-                  required
-                />
-              </label>
-              {error ? <p className="team-login-error">{error}</p> : null}
-              <button type="submit" className="btn primary wide" disabled={busy}>
-                {busy ? "Se verifică…" : "Intră"}
-              </button>
-            </form>
-          </>
-        )}
+    <div className="team-login" role="dialog" aria-modal="true" aria-labelledby="team-login-title">
+      <button type="button" className="team-login-scrim" onClick={closeTeamLogin} aria-label="Închide" />
+      <div className="team-login-card" onClick={(e) => e.stopPropagation()}>
+        <div className="team-login-head">
+          <h1 id="team-login-title">Acces editare</h1>
+          <button type="button" className="icon-x" onClick={closeTeamLogin} aria-label="Închide">
+            <X size={18} strokeWidth={2.25} />
+          </button>
+        </div>
+        <p className="sub">Doar echipa poate edita harta. Introdu numele și parola primite.</p>
+        <form className="team-login-form" onSubmit={(e) => void onSubmit(e)}>
+          <label className="field">
+            Nume (îl văd colegii la lock)
+            <input
+              type="text"
+              name="name"
+              autoComplete="nickname"
+              maxLength={24}
+              value={name}
+              onChange={(ev) => setName(ev.target.value)}
+              required
+              autoFocus
+            />
+          </label>
+          <label className="field">
+            Parolă
+            <input
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(ev) => setPassword(ev.target.value)}
+              required
+            />
+          </label>
+          {error ? <p className="team-login-error">{error}</p> : null}
+          <button type="submit" className="btn primary wide" disabled={busy}>
+            {busy ? "Se verifică…" : "Intră în editare"}
+          </button>
+        </form>
       </div>
     </div>
   );

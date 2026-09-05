@@ -37,7 +37,7 @@ async function req(url: string, init?: RequestInit) {
 
 export async function apiMe(): Promise<{ name: string } | null> {
   try {
-    return (await req("/api/me")) as { name: string };
+    return (await req("/api/me", { signal: AbortSignal.timeout(8_000) })) as { name: string };
   } catch {
     return null;
   }
@@ -91,7 +91,7 @@ export async function fetchLiveEdits(): Promise<{
   buildings: BuildingEditsFile;
   etag: string | null;
 }> {
-  const r = await fetch("/api/edits", { cache: "no-store" });
+  const r = await fetch("/api/edits", { cache: "no-store", signal: AbortSignal.timeout(8_000) });
   if (!r.ok) throw new Error("edits");
   const data = (await r.json()) as { streets?: unknown; buildings?: unknown };
   return {

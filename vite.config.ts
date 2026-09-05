@@ -92,7 +92,7 @@ function googleSheetProxyPlugin(): Plugin {
           return;
         }
         const target = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${gid}`;
-        fetch(target)
+        fetch(target, { signal: AbortSignal.timeout(10_000) })
           .then(async (r) => {
             const text = await r.text();
             res.statusCode = r.ok ? 200 : r.status;
@@ -118,6 +118,6 @@ export default defineConfig(({ mode }) => {
       googleSheetProxyPlugin(),
     ],
     base: "./",
-    server: { port: 5500, host: true },
+    server: { port: 5500, host: true, strictPort: true },
   };
 });

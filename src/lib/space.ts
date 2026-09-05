@@ -310,10 +310,10 @@ export function flagSpaceStory(props: Record<string, unknown>): string | null {
   const reserved = featureHasReservedParking(props);
   if (!bike && !illegal && !reserved) return null;
   if (doorBike && reserved) {
-    return "Pistă pe carosabil (între carosabil și parcări); trotuarul e afectat și de parcare amenajată.";
+    return "Pistă biciclete carosabil (între carosabil și parcări); trotuarul e afectat și de parcare amenajată.";
   }
   if (doorBike) {
-    return "Pistă pe carosabil — între carosabil și mașinile parcate, fără protecție.";
+    return "Pistă biciclete carosabil — între carosabil și mașinile parcate, fără protecție.";
   }
   if (bike && reserved) {
     return "Are pistă; o parte din trotuar e totuși rezervată parcării de mașini.";

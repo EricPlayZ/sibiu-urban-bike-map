@@ -1,74 +1,132 @@
 import type { Map } from "maplibre-gl";
 
+type PointLike = { x: number; y: number; sub?: (p: PointLike) => PointLike };
+
+type ScrollZoomHook = {
+  isEnabled: () => boolean;
+  isActive: () => boolean;
+  isZooming: () => boolean;
+  wheel: (e: WheelEvent, point: PointLike | PointLike[]) => void;
+  renderFrame: (e?: { timeStamp?: number }) => {
+    noInertia?: boolean;
+    needsRenderFrame?: boolean;
+    zoomDelta?: number;
+    around?: PointLike;
+    originalEvent?: Event;
+  } | void;
+  reset: () => void;
+  _triggerRenderFrame: () => void;
+  _active: boolean;
+  _zooming: boolean;
+};
+
+const ZOOM_TAU_S = 0.09;
+
+function wheelPoint(point: PointLike | PointLike[] | undefined): PointLike | undefined {
+  if (!point) return undefined;
+  return Array.isArray(point) ? point[0] : point;
+}
+
 /**
- * Zoom pe wheel tip Google/OSM:
- * - scroll rapid doar actualizează targetZoom
- * - un loop RAF face lerp către țintă
- * - zoom în jurul cursorului (jumpTo ignoră `around` — corectăm cu panBy)
+ * Zoom pe wheel lin (chase către țintă, în jurul cursorului).
+ * Rămânem în handler-ul nativ MapLibre (zoomDelta pe renderFrame), ca pan-ul
+ * să meargă în același frame — fără jumpTo / RAF separat, care sacadează.
  */
 export function enableChasingWheelZoom(map: Map) {
-    map.scrollZoom.disable();
+  const h = map.scrollZoom as unknown as ScrollZoomHook;
+  if (!map.scrollZoom.isEnabled()) map.scrollZoom.enable();
 
-    let targetZoom = map.getZoom();
-    let anchorPx: { x: number; y: number } | null = null;
-    let raf = 0;
-    let running = false;
+  const origWheel = h.wheel.bind(h);
+  const origRenderFrame = h.renderFrame.bind(h);
+  const origReset = h.reset.bind(h);
+  const origIsActive = h.isActive.bind(h);
+  const origIsZooming = h.isZooming.bind(h);
 
-    const syncFromMap = () => {
-        if (!running) targetZoom = map.getZoom();
+  let targetZoom = map.getZoom();
+  let around: PointLike | undefined;
+  let lastEvent: WheelEvent | undefined;
+  let running = false;
+  let lastTs = 0;
+
+  const clampZoom = (z: number) => Math.min(map.getMaxZoom(), Math.max(map.getMinZoom(), z));
+
+  const syncFromMap = () => {
+    if (!running) targetZoom = map.getZoom();
+  };
+  map.on("zoomend", syncFromMap);
+  map.on("moveend", syncFromMap);
+
+  h.wheel = (e, point) => {
+    if (!map.scrollZoom.isEnabled()) return;
+
+    e.preventDefault();
+
+    const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? map.getContainer().clientHeight : 1;
+    let dy = e.deltaY * scale;
+    if (e.shiftKey && dy) dy /= 4;
+    const factor = e.ctrlKey ? 0.01 : 0.0022;
+    targetZoom = clampZoom(targetZoom - dy * factor);
+
+    around = wheelPoint(point);
+    lastEvent = e;
+    if (!running) lastTs = 0;
+    running = true;
+    h._active = true;
+    h._zooming = true;
+    h._triggerRenderFrame();
+  };
+
+  h.renderFrame = (e) => {
+    if (!running) return;
+
+    const now = typeof e?.timeStamp === "number" ? e.timeStamp : performance.now();
+    const dt = lastTs ? Math.min(0.048, Math.max(0, (now - lastTs) / 1000)) : 1 / 60;
+    lastTs = now;
+
+    const cur = map.getZoom();
+    const diff = targetZoom - cur;
+    if (Math.abs(diff) < 0.0008) {
+      const zoomDelta = Math.abs(diff) >= 0.0001 ? diff : 0;
+      running = false;
+      lastTs = 0;
+      h._active = false;
+      h._zooming = false;
+      return {
+        noInertia: true,
+        needsRenderFrame: false,
+        zoomDelta,
+        around,
+        originalEvent: lastEvent,
+      };
+    }
+
+    const k = 1 - Math.exp(-dt / ZOOM_TAU_S);
+    h._active = true;
+    h._zooming = true;
+    return {
+      noInertia: true,
+      needsRenderFrame: true,
+      zoomDelta: diff * k,
+      around,
+      originalEvent: lastEvent,
     };
-    map.on("zoomend", syncFromMap);
-    map.on("moveend", syncFromMap);
+  };
 
-    /** Zoom + păstrează același punct geografic sub pixelul cursorului. */
-    const jumpZoomAt = (zoom: number, pt: { x: number; y: number }) => {
-        const lngLat = map.unproject([pt.x, pt.y]);
-        map.jumpTo({ zoom });
-        const after = map.project(lngLat);
-        map.panBy([-(pt.x - after.x), -(pt.y - after.y)], { animate: false });
-    };
+  h.isActive = () => running || origIsActive();
+  h.isZooming = () => running || origIsZooming();
+  h.reset = () => {
+    running = false;
+    lastTs = 0;
+    origReset();
+  };
 
-    const tick = () => {
-        raf = 0;
-        const cur = map.getZoom();
-        const diff = targetZoom - cur;
-        if (!anchorPx || Math.abs(diff) < 0.0008) {
-            if (anchorPx && Math.abs(diff) >= 0.0001) jumpZoomAt(targetZoom, anchorPx);
-            running = false;
-            return;
-        }
-        const alpha = Math.min(0.32, 0.14 + Math.abs(diff) * 0.1);
-        jumpZoomAt(cur + diff * alpha, anchorPx);
-        running = true;
-        raf = requestAnimationFrame(tick);
-    };
-
-    const onWheel = (e: WheelEvent) => {
-        e.preventDefault();
-
-        const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? map.getContainer().clientHeight : 1;
-        const dy = e.deltaY * scale;
-        const factor = e.ctrlKey ? 0.01 : 0.0022;
-        targetZoom = Math.min(map.getMaxZoom(), Math.max(map.getMinZoom(), targetZoom - dy * factor));
-
-        const rect = map.getCanvas().getBoundingClientRect();
-        anchorPx = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-
-        if (!raf) raf = requestAnimationFrame(tick);
-        running = true;
-    };
-
-    // Pe canvas-container, nu pe <canvas>: markerele HTML (școli) sunt sibling-uri
-    // ale canvas-ului, deci wheel-ul pe pin nu ajungea pe canvas. scrollZoom-ul
-    // nativ MapLibre ascultă tot aici. Click/tap pe markere rămâne neschimbat.
-    const canvasContainer = map.getCanvasContainer();
-    canvasContainer.addEventListener("wheel", onWheel, { passive: false });
-
-    return () => {
-        canvasContainer.removeEventListener("wheel", onWheel);
-        map.off("zoomend", syncFromMap);
-        map.off("moveend", syncFromMap);
-        if (raf) cancelAnimationFrame(raf);
-        map.scrollZoom.enable();
-    };
+  return () => {
+    h.wheel = origWheel;
+    h.renderFrame = origRenderFrame;
+    h.reset = origReset;
+    h.isActive = origIsActive;
+    h.isZooming = origIsZooming;
+    map.off("zoomend", syncFromMap);
+    map.off("moveend", syncFromMap);
+  };
 }

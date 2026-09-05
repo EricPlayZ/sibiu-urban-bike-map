@@ -10,6 +10,7 @@ import {
 } from "./lib/store";
 import { applyLocalEditsToCollection, fetchCommittedLocalEdits } from "./lib/localEdits";
 import { buildingTypesFromFile, parseBuildingEditsFile, type BuildingType } from "./lib/buildingEdits";
+import { streetSchoolSlugs } from "./lib/schoolCatchment";
 import {
   acquireLock,
   apiLogin,
@@ -43,6 +44,27 @@ import { VIEW_PRESETS, FOCUS_PRESETS, type FocusId, type LayerVisibility, type M
 import { runImportPipeline, type ImportReport } from "./lib/importPipeline";
 import type { SearchFocus, SearchHit } from "./lib/mapSearch";
 
+const LEGEND_OPEN_KEY = "ubr_legend_open";
+
+function loadLegendOpen(): boolean {
+  try {
+    const v = localStorage.getItem(LEGEND_OPEN_KEY);
+    if (v === "0") return false;
+    if (v === "1") return true;
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
+
+function persistLegendOpen(open: boolean) {
+  try {
+    localStorage.setItem(LEGEND_OPEN_KEY, open ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
 type Filters = {
   /** Slug-uri cartiere selectate (multi). Goale = nimic pe hartă. */
   neighborhoods: string[];
@@ -69,6 +91,7 @@ type AppState = {
   filtersOpen: boolean;
   basemapOpen: boolean;
   statsOpen: boolean;
+  legendOpen: boolean;
   themeOpen: boolean;
   editsOpen: boolean;
   importReportOpen: boolean;
@@ -95,11 +118,15 @@ type AppState = {
   toast: string | null;
   teamAuthed: boolean;
   teamName: string | null;
+  teamLoginOpen: boolean;
   entityLock: { held: boolean; holder: string | null };
 
   init: () => Promise<void>;
   teamLogin: (password: string, name: string) => Promise<void>;
   teamLogout: () => Promise<void>;
+  openTeamLogin: () => void;
+  closeTeamLogin: () => void;
+  toggleEditAccess: () => void;
   setEditMode: (v: boolean) => void;
   setViewMode: (v: ViewMode) => void;
   setLayer: (id: MapLayerId, on: boolean) => void;
@@ -116,6 +143,8 @@ type AppState = {
   toggleFilters: () => void;
   closeFilters: () => void;
   closeStats: () => void;
+  closeLegend: () => void;
+  openLegend: () => void;
   toggleBasemap: () => void;
   toggleStats: () => void;
   toggleTheme: () => void;
@@ -171,14 +200,19 @@ function syncWorkingStreets(
 
 let stopSync: (() => void) | null = null;
 let pollEtag: string | null = null;
+let bootPromise: Promise<void> | null = null;
 
 function paintBuildingTypes(buildings: GeoJSON.FeatureCollection | null, types: Record<string, { type: string }>) {
   if (!buildings) return null;
-  for (const f of buildings.features) {
-    const id = String((f.properties as { bid?: string }).bid || "");
-    if (id && types[id]) (f.properties as { ubr_type: string }).ubr_type = types[id].type;
-  }
-  return { ...buildings, features: buildings.features.slice() };
+  return {
+    type: "FeatureCollection" as const,
+    features: buildings.features.map((f) => {
+      const id = String((f.properties as { bid?: string } | null)?.bid || "");
+      const properties = { ...(f.properties || {}) } as Record<string, unknown>;
+      if (id && types[id]) properties.ubr_type = types[id].type;
+      return { ...f, properties };
+    }),
+  };
 }
 
 function applyTeamEvent(ev: TeamEvent) {
@@ -248,7 +282,8 @@ export const useApp = create<AppState>((set, get) => ({
   filters: { neighborhoods: [], schools: [] },
   filtersOpen: false,
   basemapOpen: false,
-  statsOpen: true,
+  statsOpen: false,
+  legendOpen: loadLegendOpen(),
   themeOpen: false,
   editsOpen: false,
   importReportOpen: false,
@@ -272,6 +307,7 @@ export const useApp = create<AppState>((set, get) => ({
   toast: null,
   teamAuthed: false,
   teamName: null,
+  teamLoginOpen: false,
   entityLock: { held: true, holder: null },
 
   showToast: (msg) => {
@@ -279,101 +315,116 @@ export const useApp = create<AppState>((set, get) => ({
     window.setTimeout(() => set({ toast: null }), 2800);
   },
 
-  init: async () => {
-    applyDocumentTheme(get().uiTheme);
-    set({ loadingMsg: "Importăm geometrie + CSV…" });
-    const [limits, schools] = await Promise.all([
-      fetch("./neighborhood_limits.geojson").then((r) => r.json()) as Promise<GeoJSON.FeatureCollection>,
-      fetch("./schools.geojson")
-        .then((r) => r.json())
-        .catch(() => ({ type: "FeatureCollection", features: [] })) as Promise<GeoJSON.FeatureCollection>,
-    ]);
+  init: () => {
+    if (bootPromise) return bootPromise;
+    bootPromise = (async () => {
+      applyDocumentTheme(get().uiTheme);
+      set({ loadingMsg: "Importăm geometrie…" });
+      try {
+        const [limits, schools] = await Promise.all([
+          fetch("./neighborhood_limits.geojson", { signal: AbortSignal.timeout(20_000) }).then((r) => {
+            if (!r.ok) throw new Error(`neighborhood_limits ${r.status}`);
+            return r.json() as Promise<GeoJSON.FeatureCollection>;
+          }),
+          fetch("./schools.geojson", { signal: AbortSignal.timeout(20_000) })
+            .then((r) => r.json())
+            .catch(() => ({ type: "FeatureCollection", features: [] })) as Promise<GeoJSON.FeatureCollection>,
+        ]);
 
-    const [imported, live, me] = await Promise.all([
-      runImportPipeline(limits),
-      fetchLiveEdits()
-        .then((v) => {
-          pollEtag = v.etag;
-          return v;
-        })
-        .catch(async () => ({
-          streets: await fetchCommittedLocalEdits(),
-          buildings: parseBuildingEditsFile(
-            await fetch("./data/building-edits.json")
-              .then((r) => (r.ok ? r.json() : {}))
-              .catch(() => ({}))
-          ),
-          etag: null,
-        })),
-      apiMe(),
-    ]);
-    const pipelineStreets = imported.streets;
+        const [imported, live, me] = await Promise.all([
+          runImportPipeline(limits),
+          fetchLiveEdits()
+            .then((v) => {
+              pollEtag = v.etag;
+              return v;
+            })
+            .catch(async () => ({
+              streets: await fetchCommittedLocalEdits(),
+              buildings: parseBuildingEditsFile(
+                await fetch("./data/building-edits.json", { signal: AbortSignal.timeout(8_000) })
+                  .then((r) => (r.ok ? r.json() : {}))
+                  .catch(() => ({}))
+              ),
+              etag: null,
+            })),
+          apiMe(),
+        ]);
+        const pipelineStreets = imported.streets;
 
-    purgeExcelSeedMeasurements();
-    migrateV1(pipelineStreets);
-    purgeEmptyOrFlagOnlyMeasurements();
+        purgeExcelSeedMeasurements();
+        migrateV1(pipelineStreets);
+        purgeEmptyOrFlagOnlyMeasurements();
 
-    const committedEdits = live.streets;
-    const measurements = committedEdits;
-    const streets = applyLocalEditsToCollection(pipelineStreets, measurements);
+        const committedEdits = live.streets;
+        const measurements = committedEdits;
+        const streets = applyLocalEditsToCollection(pipelineStreets, measurements);
 
-    const officialFeatures = (limits.features || []).filter((f) =>
-      neighborhoodIsActive(f.properties as { dissolve?: unknown })
-    );
-    const neighborhoodList = officialFeatures
-      .map((f) => {
-        const p = f.properties as { slug?: string; denumire?: string; name?: string };
-        return { slug: p.slug || "", name: p.denumire || p.name || p.slug || "" };
-      })
-      .filter((n) => n.slug)
-      .sort((a, b) => a.name.localeCompare(b.name, "ro"));
+        const officialFeatures = (limits.features || []).filter((f) =>
+          neighborhoodIsActive(f.properties as { dissolve?: unknown })
+        );
+        const neighborhoodList = officialFeatures
+          .map((f) => {
+            const p = f.properties as { slug?: string; denumire?: string; name?: string };
+            return { slug: p.slug || "", name: p.denumire || p.name || p.slug || "" };
+          })
+          .filter((n) => n.slug)
+          .sort((a, b) => a.name.localeCompare(b.name, "ro"));
 
-    const schoolList = (schools.features || [])
-      .map((f) => {
-        const p = f.properties as { slug?: string; denumire?: string; name?: string };
-        return { slug: p.slug || "", name: p.denumire || p.name || p.slug || "" };
-      })
-      .filter((n) => n.slug)
-      .sort((a, b) => a.name.localeCompare(b.name, "ro"));
+        const schoolList = (schools.features || [])
+          .map((f) => {
+            const p = f.properties as { slug?: string; denumire?: string; name?: string };
+            return { slug: p.slug || "", name: p.denumire || p.name || p.slug || "" };
+          })
+          .filter((n) => n.slug)
+          .sort((a, b) => a.name.localeCompare(b.name, "ro"));
 
-    const errorCount = imported.report.issues.filter((i) => i.severity === "error").length;
+        const errorCount = imported.report.issues.filter((i) => i.severity === "error").length;
 
-    set({
-      streets,
-      pipelineStreets,
-      neighborhoods: {
-        type: "FeatureCollection",
-        features: officialFeatures,
-      },
-      measurements,
-      committedEdits,
-      seedMeasurements: imported.csvMeasurements,
-      importReport: imported.report,
-      statsOpen: true,
-      buildingTypes: buildingTypesFromFile(live.buildings),
-      schools,
-      neighborhoodList,
-      schoolList,
-      teamAuthed: Boolean(me),
-      teamName: me?.name ?? null,
-      filters: {
-        ...get().filters,
-        neighborhoods: neighborhoodList.map((n) => n.slug),
-        schools: schoolList.map((s) => s.slug),
-      },
-      ready: true,
-      loadingMsg: "",
-    });
+        set({
+          streets,
+          pipelineStreets,
+          neighborhoods: {
+            type: "FeatureCollection",
+            features: officialFeatures,
+          },
+          measurements,
+          committedEdits,
+          seedMeasurements: imported.csvMeasurements,
+          importReport: imported.report,
+          buildingTypes: buildingTypesFromFile(live.buildings),
+          schools,
+          neighborhoodList,
+          schoolList,
+          teamAuthed: Boolean(me),
+          teamName: me?.name ?? null,
+          filters: {
+            ...get().filters,
+            neighborhoods: neighborhoodList.map((n) => n.slug),
+            schools: schoolList.map((s) => s.slug),
+          },
+          ready: true,
+          loadingMsg: "",
+        });
 
-    startLiveSync(Boolean(me));
+        startLiveSync(Boolean(me));
 
-    if (errorCount > 0) {
-      get().showToast(`Import: ${errorCount} erori de potrivire CSV↔OSM`);
-    }
+        if (me && errorCount > 0) {
+          get().showToast(`Import: ${errorCount} erori de potrivire CSV↔OSM`);
+        }
+      } catch (e) {
+        console.error(e);
+        set({ ready: true, loadingMsg: "" });
+        get().showToast("Eroare la încărcare");
+      }
+    })();
+    return bootPromise;
   },
 
   setEditMode: (v) => {
-    if (v && !get().teamAuthed) return;
+    if (v && !get().teamAuthed) {
+      set({ teamLoginOpen: true });
+      return;
+    }
     if (v) {
       if (get().editMode) return;
       set({
@@ -396,8 +447,9 @@ export const useApp = create<AppState>((set, get) => ({
   },
   teamLogin: async (password, name) => {
     const me = await apiLogin(password, name);
-    set({ teamAuthed: true, teamName: me.name });
+    set({ teamAuthed: true, teamName: me.name, teamLoginOpen: false });
     startLiveSync(true);
+    get().setEditMode(true);
   },
   teamLogout: async () => {
     await apiLogout();
@@ -405,12 +457,22 @@ export const useApp = create<AppState>((set, get) => ({
     set({
       teamAuthed: false,
       teamName: null,
+      teamLoginOpen: false,
       csvEditorOpen: false,
       editsOpen: false,
       importReportOpen: false,
       entityLock: { held: true, holder: null },
     });
     startLiveSync(false);
+  },
+  openTeamLogin: () => set({ teamLoginOpen: true }),
+  closeTeamLogin: () => set({ teamLoginOpen: false }),
+  toggleEditAccess: () => {
+    if (!get().teamAuthed) {
+      set({ teamLoginOpen: true });
+      return;
+    }
+    get().setEditMode(!get().editMode);
   },
   refreshEntityLock: async (kind, id) => {
     if (!get().teamAuthed) {
@@ -492,6 +554,14 @@ export const useApp = create<AppState>((set, get) => ({
     set({ filtersOpen: !get().filtersOpen, basemapOpen: false, themeOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false, csvEditorOpen: false, searchOpen: false }),
   closeFilters: () => set({ filtersOpen: false }),
   closeStats: () => set({ statsOpen: false }),
+  closeLegend: () => {
+    persistLegendOpen(false);
+    set({ legendOpen: false });
+  },
+  openLegend: () => {
+    persistLegendOpen(true);
+    set({ legendOpen: true });
+  },
   toggleBasemap: () =>
     set({ basemapOpen: !get().basemapOpen, filtersOpen: false, themeOpen: false, statsOpen: false, editsOpen: false, importReportOpen: false, csvEditorOpen: false, searchOpen: false }),
   toggleStats: () =>
@@ -690,12 +760,23 @@ export const useApp = create<AppState>((set, get) => ({
   setBuildingType: async (id, type) => {
     if (!get().teamAuthed) return;
     if (type !== "casa" && type !== "bloc" && type !== "altceva" && type !== "necunoscut") return;
+    const prevTypes = get().buildingTypes;
+    const prevBuildings = get().buildings;
+    const prevSelected = get().selected;
+    const types = { ...prevTypes, [id]: { type } };
+    const nextBuildings = paintBuildingTypes(prevBuildings, types);
+    const selected =
+      prevSelected?.kind === "building" && prevSelected.id === id ? { ...prevSelected, type } : prevSelected;
+    set({
+      buildingTypes: types,
+      ...(nextBuildings ? { buildings: nextBuildings } : {}),
+      selected,
+    });
     try {
-      await putBuilding(id, type as BuildingType, get().buildingTypes[id] ? "*" : undefined);
-      const types = { ...get().buildingTypes, [id]: { type } };
-      set({ buildingTypes: types, buildings: paintBuildingTypes(get().buildings, types) });
+      await putBuilding(id, type as BuildingType, prevTypes[id] ? "*" : undefined);
       get().showToast(`Clădire: ${type}`);
     } catch {
+      set({ buildingTypes: prevTypes, buildings: prevBuildings, selected: prevSelected });
       get().showToast("Nu am putut salva tipul clădirii");
     }
   },
@@ -747,9 +828,9 @@ export const useApp = create<AppState>((set, get) => ({
       const rawBike = streetHasBikeLane(raw, m);
       const rawIllegal = streetHasIllegalParking(raw, m);
       const rawReserved = featureHasReservedParking(raw);
-      const schoolSlug = String(raw.arondat || "").trim();
-      const rawSchool = Boolean(schoolSlug);
-      const schoolSelected = !schoolSlug || selectedSchools.has(schoolSlug);
+      const schoolSlugs = streetSchoolSlugs(raw);
+      const rawSchool = schoolSlugs.length > 0;
+      const schoolSelected = schoolSlugs.length === 0 || schoolSlugs.some((slug) => selectedSchools.has(slug));
       const hasLocal = hasAnyEdit(measurements[sid]);
       // Străzile doar-școală: ascunse fără strat arondare — DAR apar ca bază dacă streetsBase / edit
       const onlySchool = rawSchool && !rawBike && !rawIllegal && !rawReserved && !hasLocal;
@@ -766,7 +847,7 @@ export const useApp = create<AppState>((set, get) => ({
       p.show_illgl = showData && layers.illegal && rawIllegal ? 1 : 0;
       p.show_rsrvd = showData && layers.reserved && rawReserved ? 1 : 0;
       p.has_arondat = showData && layers.schoolAssign && rawSchool && schoolSelected ? 1 : 0;
-      p.arondat = schoolSlug;
+      p.arondat = schoolSlugs.join(",");
 
       const edited = editMode && showData && hasLocal;
       p.edited = edited ? 1 : 0;

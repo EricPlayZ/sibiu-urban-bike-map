@@ -1,4 +1,4 @@
-/** Arondare școli: CSV streets → OSM `arondat` (slug), oraș-wide după nume. */
+/** Arondare școli: CSV streets → OSM `arondat` (slug-uri, virgulă), oraș-wide după nume. */
 
 import { parseCsvText } from "./csvImport";
 import { makeStreetId } from "./space";
@@ -30,6 +30,37 @@ export type CatchmentStats = {
 };
 
 const OSM_NO_SCHOOL_SAMPLE = 30;
+
+/** Slug-uri din `arondat` — string cu virgulă sau listă (GeoJSON / MapLibre). */
+export function parseArondat(value: unknown): string[] {
+  const raw =
+    Array.isArray(value)
+      ? value.map((v) => String(v ?? "").trim())
+      : String(value ?? "")
+          .split(",")
+          .map((v) => v.trim());
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const slug of raw) {
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    out.push(slug);
+  }
+  return out;
+}
+
+export function formatArondat(slugs: string[]): string {
+  return parseArondat(slugs).join(",");
+}
+
+export function streetSchoolSlugs(props: Record<string, unknown> | null | undefined): string[] {
+  return parseArondat(props?.arondat);
+}
+
+export function streetAssignedToSchool(props: Record<string, unknown> | null | undefined, slug: string): boolean {
+  if (!slug) return false;
+  return streetSchoolSlugs(props).includes(slug);
+}
 
 function col(row: Record<string, string>, names: string[]) {
   const keys = Object.keys(row);
@@ -81,8 +112,8 @@ function remapMatchIssue(issue: ImportIssue, row: CatchmentRow): ImportIssue | n
 }
 
 /**
- * Primul rând CSV pentru un nume normalizat câștigă `arondat`.
- * Ordinea CSV urmează circumscripțiile din PDF (1, 2, …).
+ * Toate școlile CSV pentru un nume normalizat ajung pe `arondat` (ordine CSV).
+ * Ordinea rândurilor urmează circumscripțiile din PDF (1, 2, …).
  */
 export function applySchoolCatchments(
   features: GeoJSON.Feature[],
@@ -152,26 +183,29 @@ export function applySchoolCatchments(
   let csvUnmatched = 0;
 
   for (const [, list] of byName) {
-    const slugs = [...new Set(list.map((r) => r.school_slug).filter(Boolean))];
+    const slugs = parseArondat(list.map((r) => r.school_slug));
     const primary = list[0];
     if (slugs.length > 1) {
       stats.multiSchool++;
       issues.push({
         code: "arondare_multi_school",
-        severity: "warn",
+        severity: "info",
         csv_name: primary.street_name,
-        detail: `„${primary.street_name}” e în ${slugs.length} școli (${slugs.join(", ")}). Păstrăm prima din CSV: ${primary.school_slug}.`,
-        hint: "Modelul are un singur arondat pe stradă. Segmentele din DESCRIERE nu sunt tăiate pe OSM.",
+        detail: `„${primary.street_name}” e în ${slugs.length} școli (${slugs.join(", ")}). Păstrăm toate pe stradă.`,
+        hint: "Strada e desenată cu toate culorile școlilor. Segmentele din DESCRIERE nu sunt tăiate pe OSM.",
       });
     }
 
-    if (primary.school_slug && !schoolSlugs.has(primary.school_slug)) {
-      unmatchedSchools.add(`${primary.school_slug}::${primary.school_name}`);
+    for (const row of list) {
+      if (!row.school_slug || schoolSlugs.has(row.school_slug)) continue;
+      const key = `${row.school_slug}::${row.school_name}`;
+      if (unmatchedSchools.has(key)) continue;
+      unmatchedSchools.add(key);
       issues.push({
         code: "arondare_school_unmatched",
         severity: "warn",
-        csv_name: primary.street_name,
-        detail: `Școala CSV „${primary.school_name || primary.school_slug}” (slug ${primary.school_slug}) nu e în schools.geojson. Arondăm strada oricum.`,
+        csv_name: row.street_name,
+        detail: `Școala CSV „${row.school_name || row.school_slug}” (slug ${row.school_slug}) nu e în schools.geojson. Arondăm strada oricum.`,
         hint: "Adaugă punctul școlii în public/schools.geojson sau corectează slug-ul.",
       });
     }
@@ -189,21 +223,20 @@ export function applySchoolCatchments(
       continue;
     }
 
-    const slug = primary.school_slug;
     for (const t of match.targets) {
       const p = (t.feature.properties || {}) as Record<string, unknown>;
-      p.arondat = slug;
+      p.arondat = formatArondat([...parseArondat(p.arondat), ...slugs]);
       t.feature.properties = p;
     }
   }
 
   stats.csvUnmatched = csvUnmatched;
   stats.schoolUnmatched = unmatchedSchools.size;
-  stats.osmMatched = features.filter((f) => String((f.properties as { arondat?: string })?.arondat || "")).length;
+  stats.osmMatched = features.filter((f) => streetSchoolSlugs((f.properties || {}) as Record<string, unknown>).length > 0).length;
 
   const without = osmStreets.filter((s) => {
     if (!s.key) return false;
-    return !String((s.feature.properties as { arondat?: string } | null)?.arondat || "");
+    return streetSchoolSlugs((s.feature.properties || {}) as Record<string, unknown>).length === 0;
   });
   stats.osmWithoutSchool = without.length;
   for (const s of without.slice(0, OSM_NO_SCHOOL_SAMPLE)) {

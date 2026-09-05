@@ -15,20 +15,19 @@ export type LayerVisibility = Record<MapLayerId, boolean>;
 
 export type FocusId = "hideEmpty" | "illegalOnly" | "bikeOnly";
 
-export const LAYER_META: { id: MapLayerId; label: string; hint: string }[] = [
-  { id: "streetsBase", label: "Străzi (bază)", hint: "Linia gri pentru toate străzile" },
-  { id: "bike", label: "Pistă biciclete", hint: "Pistă fără mașini parcate pe lângă ea" },
-  {
-    id: "bikeDoor",
-    label: "Pistă pe carosabil",
-    hint: "Între carosabil și mașinile parcate (pistă + parcare amenajată)",
-  },
-  { id: "reserved", label: "Parcare amenajată", hint: "Parcare pe trotuar amenajată" },
-  { id: "illegal", label: "Parcare ilegală", hint: "Parcare ilegală pe trotuar" },
-  { id: "schoolAssign", label: "Arondare școli", hint: "Străzi arondate unei școli" },
-  { id: "schoolMarkers", label: "Markere școli", hint: "Pin-urile pe hartă" },
-  { id: "buildings", label: "Clădiri", hint: "Poligoane tip casă / bloc" },
-  { id: "neighborhoods", label: "Contur cartiere", hint: "Limitele și numele de cartier" },
+export const BIKE_SAFE_LABEL = "Pistă biciclete separată";
+export const BIKE_DOOR_LABEL = "Pistă biciclete carosabil";
+
+export const LAYER_META: { id: MapLayerId; label: string }[] = [
+  { id: "streetsBase", label: "Străzi (bază)" },
+  { id: "bike", label: BIKE_SAFE_LABEL },
+  { id: "bikeDoor", label: BIKE_DOOR_LABEL },
+  { id: "reserved", label: "Parcare amenajată" },
+  { id: "illegal", label: "Parcare ilegală" },
+  { id: "schoolAssign", label: "Arondare școli" },
+  { id: "schoolMarkers", label: "Markere școli" },
+  { id: "buildings", label: "Clădiri" },
+  { id: "neighborhoods", label: "Contur cartiere" },
 ];
 
 export const VIEW_PRESETS: Record<ViewMode, LayerVisibility> = {

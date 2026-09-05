@@ -36,13 +36,44 @@ function assetUrl(rel: string) {
   return `${b}${r}`;
 }
 
+const SHEET_TAB_TIMEOUT_MS = 8_000;
+const SHEET_TAB_CONCURRENCY = 4;
+
 function tabFetchUrl(tab: SheetTab) {
   if (import.meta.env.DEV) return `/__ubr/google-sheet?gid=${encodeURIComponent(tab.gid)}`;
   return googleSheetCsvUrl(tab.gid);
 }
 
+async function mapSettled<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>
+): Promise<PromiseSettledResult<R>[]> {
+  if (!items.length) return [];
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let cursor = 0;
+  const n = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(
+    Array.from({ length: n }, async () => {
+      for (;;) {
+        const i = cursor++;
+        if (i >= items.length) return;
+        try {
+          results[i] = { status: "fulfilled", value: await fn(items[i]) };
+        } catch (reason) {
+          results[i] = { status: "rejected", reason };
+        }
+      }
+    })
+  );
+  return results;
+}
+
 async function fetchTabCsv(tab: SheetTab): Promise<string> {
-  const r = await fetch(tabFetchUrl(tab), { cache: "no-store" });
+  const r = await fetch(tabFetchUrl(tab), {
+    cache: "no-store",
+    signal: AbortSignal.timeout(SHEET_TAB_TIMEOUT_MS),
+  });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const text = await r.text();
   if (!text.trim() || text.trimStart().startsWith("<!")) throw new Error("răspunsul nu e CSV");
@@ -64,12 +95,10 @@ export { persistStreetFixes as persistStreetFixesFile };
 export async function fetchGoogleSheetMeasurements(): Promise<SheetLoadResult> {
   const [fixes, settled] = await Promise.all([
     fetchStreetFixesFile(),
-    Promise.allSettled(
-      SHEET_TABS.map(async (tab) => {
-        const text = await fetchTabCsv(tab);
-        return { tab, text };
-      })
-    ),
+    mapSettled(SHEET_TABS, SHEET_TAB_CONCURRENCY, async (tab) => {
+      const text = await fetchTabCsv(tab);
+      return { tab, text };
+    }),
   ]);
 
   const parts: { neighborhoodSlug: string; text: string }[] = [];

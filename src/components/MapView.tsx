@@ -21,8 +21,10 @@ import { neighborhoodLabelCollection } from "../lib/geoAssign";
 import { hitAnchor, hitPrimaryFeature, type SearchHit } from "../lib/mapSearch";
 import { isMobileViewport } from "../lib/breakpoints";
 import { hitRadiusPx, queryClosestFeature, queryRenderedNear } from "../lib/mapHit";
+import { explodeSchoolColorFeatures, schoolColor } from "../lib/schoolColors";
 
 const SRC = "streets";
+const SCH = "school-stripes";
 const NB = "nb";
 const NB_LABELS = "nb-labels";
 const BLD = "bld";
@@ -225,6 +227,7 @@ export function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || !map.getSource(SRC)) return;
+    if (!map.getSource(SCH) || schoolLayerNeedsRebuild(map)) addSourcesAndLayers(map);
     pushData(map);
     applyLayerVisibility(map);
   }, [ready, measurements, filters, viewMode, layers, neighborhoods, buildings, schools, editMode]);
@@ -242,7 +245,7 @@ export function MapView() {
     } else {
       applyLayerVisibility(map);
     }
-  }, [layers, ready, ensureBuildings]);
+  }, [layers, ready, ensureBuildings, buildings]);
 
   // Markere școli
   useEffect(() => {
@@ -266,7 +269,7 @@ export function MapView() {
       if (focusId === `school:${slug}`) el.classList.add("is-search-hit");
       el.title = name;
       el.setAttribute("aria-label", name);
-      el.innerHTML = schoolMarkerHtml(name);
+      el.innerHTML = schoolMarkerHtml(name, schoolColor(slug));
       el.addEventListener("click", (ev) => {
         ev.stopPropagation();
         const st = useApp.getState();
@@ -395,14 +398,30 @@ function rebuildOverlays(map: Map) {
   }
 }
 
+function schoolLayerNeedsRebuild(map: Map) {
+  try {
+    const layer = map.getStyle()?.layers?.find((l) => l.id === "streets-school");
+    return Boolean(layer && "source" in layer && layer.source !== SCH);
+  } catch {
+    return false;
+  }
+}
+
 function pushData(map: Map) {
-  const fc = useApp.getState().paintedStreets();
+  const st = useApp.getState();
+  const fc = st.paintedStreets();
   if (fc && map.getSource(SRC)) (map.getSource(SRC) as GeoJSONSource).setData(fc);
-  const nb = useApp.getState().paintedNeighborhoods();
+  const stripes = fc ? explodeSchoolColorFeatures(fc.features, new Set(st.filters.schools)) : [];
+  if (map.getSource(SCH)) {
+    (map.getSource(SCH) as GeoJSONSource).setData({ type: "FeatureCollection", features: stripes });
+  }
+  const nb = st.paintedNeighborhoods();
   if (nb && map.getSource(NB)) (map.getSource(NB) as GeoJSONSource).setData(nb);
   if (nb && map.getSource(NB_LABELS)) {
     (map.getSource(NB_LABELS) as GeoJSONSource).setData(neighborhoodLabelCollection(nb));
   }
+  const b = st.buildings;
+  if (b && map.getSource(BLD)) (map.getSource(BLD) as GeoJSONSource).setData(b);
 }
 
 function applyNeighborhoodStyle(map: Map) {
@@ -510,6 +529,7 @@ function lineWidthExpr(base: number): maplibregl.ExpressionSpecification {
 
 function addSourcesAndLayers(map: Map) {
   if (!map.getSource(SRC)) map.addSource(SRC, { type: "geojson", data: empty(), tolerance: 0.4 });
+  if (!map.getSource(SCH)) map.addSource(SCH, { type: "geojson", data: empty(), tolerance: 0.4 });
   if (!map.getSource(NB)) map.addSource(NB, { type: "geojson", data: empty(), tolerance: 0.75 });
   if (!map.getSource(NB_LABELS)) map.addSource(NB_LABELS, { type: "geojson", data: empty() });
   addSearchHighlightLayers(map);
@@ -637,10 +657,48 @@ function addSourcesAndLayers(map: Map) {
     });
   }
 
-  ensureFlagLine("streets-school", "has_arondat", "off_sch", LAYER_COLORS.schoolAssign, 5.5, {
-    visibility: "none",
-    dash: [1.4, 1.1],
-  });
+  if (schoolLayerNeedsRebuild(map) && map.getLayer("streets-school")) {
+    map.removeLayer("streets-school");
+  }
+  const schoolWidth: maplibregl.ExpressionSpecification = [
+    "case",
+    [">", ["get", "flag_count"], 1],
+    ["case", [">", ["coalesce", ["get", "school_n"], 1], 1], 3.2, 4.1],
+    [
+      "case",
+      [">", ["coalesce", ["get", "school_n"], 1], 2],
+      3.6,
+      [">", ["coalesce", ["get", "school_n"], 1], 1],
+      4.4,
+      5.5,
+    ],
+  ];
+  const schoolColorExpr: maplibregl.ExpressionSpecification = [
+    "coalesce",
+    ["get", "school_color"],
+    LAYER_COLORS.schoolAssign,
+  ];
+  if (!map.getLayer("streets-school")) {
+    map.addLayer({
+      id: "streets-school",
+      type: "line",
+      source: SCH,
+      filter: flagFilter("has_arondat"),
+      paint: {
+        "line-color": schoolColorExpr,
+        "line-width": schoolWidth,
+        "line-opacity": 0.95,
+        "line-offset": ["coalesce", ["get", "off_sch"], 0],
+      },
+      layout: { ...lineLayout, visibility: "none" },
+    });
+  } else {
+    map.setFilter("streets-school", flagFilter("has_arondat"));
+    map.setPaintProperty("streets-school", "line-color", schoolColorExpr);
+    map.setPaintProperty("streets-school", "line-width", schoolWidth);
+    map.setPaintProperty("streets-school", "line-offset", ["coalesce", ["get", "off_sch"], 0]);
+    map.setPaintProperty("streets-school", "line-opacity", 0.95);
+  }
   ensureFlagLine("streets-bike", "show_bike", "off_bike", LAYER_COLORS.bike, 5.5);
   ensureFlagLine("streets-bike-door", "show_bike_door", "off_door", LAYER_COLORS.bikeDoor, 5.5);
   ensureFlagLine("streets-reserved", "show_rsrvd", "off_rsv", LAYER_COLORS.reserved, 5.5);

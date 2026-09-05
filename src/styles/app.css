@@ -553,7 +553,7 @@ html[data-theme="dark"] .bm-light {
   height: 28px;
   transform: translateX(-50%);
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(91, 108, 255, 0.55) 0%, rgba(91, 108, 255, 0) 72%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--school-c, #5b6cff) 55%, transparent) 0%, transparent 72%);
   pointer-events: none;
 }
 .school-pin-core {
@@ -567,10 +567,15 @@ html[data-theme="dark"] .bm-light {
   display: grid;
   place-items: center;
   color: #f7f8ff;
-  background: linear-gradient(160deg, #8b9bff 0%, #5b6cff 52%, #3a4fd4 100%);
-  border: 2px solid #eef1ff;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--school-c, #5b6cff) 55%, #fff) 0%,
+    var(--school-c, #5b6cff) 52%,
+    color-mix(in srgb, var(--school-c, #5b6cff) 72%, #111) 100%
+  );
+  border: 2px solid color-mix(in srgb, var(--school-c, #5b6cff) 18%, #fff);
   box-shadow:
-    0 0 0 2px rgba(91, 108, 255, 0.35),
+    0 0 0 2px color-mix(in srgb, var(--school-c, #5b6cff) 35%, transparent),
     0 8px 18px rgba(0, 0, 0, 0.35);
 }
 .school-pin-core svg {
@@ -583,7 +588,7 @@ html[data-theme="dark"] .bm-light {
   width: 12px;
   height: 12px;
   transform: translateX(-50%) rotate(45deg);
-  background: linear-gradient(135deg, #5b6cff, #3a4fd4);
+  background: var(--school-c, #5b6cff);
   border-radius: 2px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.28);
   z-index: -1;
@@ -964,10 +969,6 @@ html[data-theme="dark"] .bm-light {
   flex-direction: column;
   gap: 3px;
 }
-.filter-switch-hint {
-  font: 500 11.5px/1.35 var(--font-body);
-  color: var(--muted);
-}
 .hint-text.tight {
   margin-top: -4px;
   margin-bottom: 10px;
@@ -1070,6 +1071,19 @@ html[data-theme="dark"] .bm-light {
   font-size: 13px;
   cursor: pointer;
   color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.chip-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 99px;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.chip.on .chip-swatch {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
 }
 .chip.on {
   background: var(--ink);
@@ -1161,6 +1175,124 @@ html[data-theme="dark"] .bm-light {
   border-radius: 3px;
   margin-right: 4px;
   vertical-align: middle;
+}
+
+.map-legend {
+  position: absolute;
+  z-index: 6;
+  left: 14px;
+  bottom: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+  color: var(--ink);
+  pointer-events: auto;
+  overflow: hidden;
+  transform-origin: bottom left;
+  transition:
+    width 0.22s cubic-bezier(0.22, 1, 0.32, 1),
+    max-height 0.22s cubic-bezier(0.22, 1, 0.32, 1),
+    padding 0.22s cubic-bezier(0.22, 1, 0.32, 1),
+    border-radius 0.2s ease;
+}
+.map-legend.is-collapsed {
+  width: max-content;
+  max-height: 48px;
+  padding: 0;
+  border-radius: 999px;
+}
+.map-legend.is-collapsed:hover {
+  background: color-mix(in srgb, var(--panel) 88%, var(--ink));
+}
+.map-legend.is-open {
+  display: flex;
+  flex-direction: column;
+  width: min(280px, calc(100vw - 28px));
+  max-width: min(280px, calc(100vw - 28px));
+  max-height: min(46vh, 420px);
+  padding: 12px 14px 13px;
+  border-radius: 18px;
+  overflow: hidden;
+}
+.map-legend-body {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+.map-legend-body.is-scrollable {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.map-legend-launch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 800 11px var(--font-body);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.map-legend-launch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+}
+.map-legend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-width: 0;
+  font: 800 11px var(--font-body);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.map-legend-head .icon-x {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+}
+.map-legend-kicker {
+  font: 700 10px var(--font-body);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 10px 0 6px;
+}
+.map-legend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.map-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  font: 600 12px var(--font-body);
+  line-height: 1.25;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.map-legend-item i {
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 12%, transparent);
+}
+.map-legend-list-schools .map-legend-item {
+  font-weight: 600;
 }
 .stats-note {
   margin: 12px 0 0;
@@ -1629,6 +1761,19 @@ html[data-theme="dark"] .bldg-chip {
   }
   .filters-panel {
     max-height: 48vh;
+  }
+  .map-legend {
+    left: 10px;
+    right: auto;
+    top: auto;
+    bottom: calc(var(--mobile-dock-top, 120px) + 10px);
+    z-index: 7;
+  }
+  .map-legend.is-open {
+    width: min(228px, 62vw);
+    max-width: min(228px, 62vw);
+    max-height: 28vh;
+    padding: 10px 11px 11px;
   }
   .mobile-dock {
     display: flex;
@@ -2748,18 +2893,37 @@ html[data-theme="dark"] .csv-table th.csv-col-flag-src {
   display: grid;
   place-items: center;
   padding: 24px;
+  pointer-events: auto;
+}
+.team-login-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border: 0;
   background: color-mix(in srgb, var(--app-bg) 82%, transparent);
 }
 .team-login-card {
+  position: relative;
+  z-index: 1;
   width: min(420px, 100%);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 28px 24px 24px;
+  pointer-events: auto;
 }
-.team-login-card h1 {
-  margin: 0 0 8px;
+.team-login-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.team-login-head h1 {
+  margin: 0;
   font: 700 22px var(--font-display);
+}
+.team-login-card .sub {
+  margin: 8px 0 0;
 }
 .team-login-form {
   display: grid;

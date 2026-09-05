@@ -3,7 +3,8 @@ import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { Bike, CheckCheck, Eye, GraduationCap, Leaf, ParkingSquare, Ruler, X } from "lucide-react";
 import { DESKTOP_MEDIA } from "../lib/breakpoints";
 import { useApp } from "../store";
-import { LAYER_META, layersMatchFocus, layersMatchPreset } from "../lib/layers";
+import { schoolColor } from "../lib/schoolColors";
+import { LAYER_META, layersMatchFocus } from "../lib/layers";
 
 function useIsDesktop() {
   const [desktop, setDesktop] = useState(() =>
@@ -23,8 +24,6 @@ export function FiltersPanel() {
   const open = useApp((s) => s.filtersOpen);
   const filters = useApp((s) => s.filters);
   const layers = useApp((s) => s.layers);
-  const viewMode = useApp((s) => s.viewMode);
-  const editMode = useApp((s) => s.editMode);
   const setLayer = useApp((s) => s.setLayer);
   const applyFocus = useApp((s) => s.applyFocus);
   const clearFocus = useApp((s) => s.clearFocus);
@@ -50,7 +49,6 @@ export function FiltersPanel() {
   const selectedSchools = new Set(filters.schools);
   const allSchoolsOn = schoolList.length > 0 && schoolList.every((s) => selectedSchools.has(s.slug));
   const schoolSelectedCount = filters.schools.length;
-  const presetSynced = layersMatchPreset(layers, viewMode, editMode ? { ignore: ["streetsBase"] } : undefined);
   const hideEmptyOn = !layers.streetsBase;
   const illegalOnlyOn = layersMatchFocus(layers, "illegalOnly");
   const bikeOnlyOn = layersMatchFocus(layers, "bikeOnly");
@@ -85,17 +83,12 @@ export function FiltersPanel() {
             </div>
 
             <div className="field-label">Straturi pe hartă</div>
-            <p className="hint-text tight">
-              Spațiu / Clădiri / Școli și focalizările de mai jos aplică preseturi pe aceste straturi.
-              {!presetSynced && " Ai modificat manual straturile față de presetul curent."}
-            </p>
             <div className="filter-switch-list" role="group" aria-label="Straturi">
               {LAYER_META.map((L) => (
                 <FilterSwitch
                   key={L.id}
                   icon={<Eye size={18} strokeWidth={2.25} />}
                   label={L.label}
-                  hint={L.hint}
                   checked={layers[L.id]}
                   onChange={(v) => setLayer(L.id, v)}
                 />
@@ -103,30 +96,22 @@ export function FiltersPanel() {
             </div>
 
             <div className="field-label">Focalizare</div>
-            <p className="hint-text tight">Ca Spațiu / Clădiri: aplică un preset pe straturi. Dacă schimbi straturile manual, focalizarea nu mai e activă.</p>
             <div className="filter-switch-list" role="group" aria-label="Filtre rapide">
               <FilterSwitch
                 icon={<Ruler size={18} strokeWidth={2.25} />}
                 label="Ascunde străzile fără date"
-                hint={
-                  editMode
-                    ? "În Editare, străzile de bază rămân mereu vizibile ca să poți edita."
-                    : "Oprește stratul „Străzi (bază)” — pe hartă rămân doar segmentele colorate (pistă, parcare, arondare)."
-                }
                 checked={hideEmptyOn}
                 onChange={(v) => setLayer("streetsBase", !v)}
               />
               <FilterSwitch
                 icon={<ParkingSquare size={18} strokeWidth={2.25} />}
                 label="Doar parcare ilegală"
-                hint="Preset: doar stratul de parcare ilegală (fără bază, pistă, rezervat, arondare)."
                 checked={illegalOnlyOn}
                 onChange={(v) => (v ? applyFocus("illegalOnly") : clearFocus())}
               />
               <FilterSwitch
                 icon={<Bike size={18} strokeWidth={2.25} />}
                 label="Doar piste de biciclete"
-                hint="Preset: doar pistele (obișnuită + pe carosabil), fără bază / parcare / arondare."
                 checked={bikeOnlyOn}
                 onChange={(v) => (v ? applyFocus("bikeOnly") : clearFocus())}
               />
@@ -167,10 +152,6 @@ export function FiltersPanel() {
               ))}
             </div>
 
-            <p className="hint-text">
-              Cartierele neselectate își ascund conturul și datele colorate; străzile de bază rămân pe hartă (dacă stratul e activ).
-            </p>
-
             <div className="field-label">Școli</div>
             <button
               type="button"
@@ -201,12 +182,11 @@ export function FiltersPanel() {
                   onClick={() => toggleSchool(s.slug)}
                   aria-pressed={selectedSchools.has(s.slug)}
                 >
+                  <span className="chip-swatch" style={{ background: schoolColor(s.slug) }} aria-hidden />
                   {s.name}
                 </button>
               ))}
             </div>
-
-            <p className="hint-text">Școlile neselectate își ascund pin-ul și străzile arondate (portocaliu).</p>
           </motion.aside>
         )}
       </AnimatePresence>
@@ -217,13 +197,11 @@ export function FiltersPanel() {
 function FilterSwitch({
   icon,
   label,
-  hint,
   checked,
   onChange,
 }: {
   icon: ReactNode;
   label: string;
-  hint?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
@@ -234,7 +212,6 @@ function FilterSwitch({
       </span>
       <span className="filter-switch-copy">
         <span className="filter-switch-label">{label}</span>
-        {hint ? <span className="filter-switch-hint">{hint}</span> : null}
       </span>
       <span className={`switch ${checked ? "on" : ""}`} aria-hidden>
         <span className="switch-knob" />

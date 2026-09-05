@@ -44,8 +44,6 @@ export function EditsPanel() {
             </button>
           </div>
 
-          <p className="hint-text">Editările sunt pe un singur segment de stradă, nu pe toată strada.</p>
-
           {editedEntries.length === 0 ? (
             <p className="hint-text">Nu există editări pe segment.</p>
           ) : (

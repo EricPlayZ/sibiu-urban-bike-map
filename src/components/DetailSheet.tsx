@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Home, Building2, Package, HelpCircle, Pencil, X, Ruler, Road, Car, Footprints, ParkingSquare, Bike, Trees, TriangleAlert, Save, Trash2 } from "lucide-react";
 import { useApp } from "../store";
 import { isDesktopViewport } from "../lib/breakpoints";
+import { streetSchoolSlugs } from "../lib/schoolCatchment";
+import { BIKE_DOOR_LABEL, BIKE_SAFE_LABEL } from "../lib/layers";
 import { FORM_FIELDS, pct, spaceShares, featureHasIllegalParking, featureHasReservedParking, resolveStreetMeasurement, streetBikeLaneStatus, streetHasBikeLane, type Measurement } from "../lib/space";
 
 const FIELD_ICONS: Partial<Record<keyof Measurement, typeof Ruler>> = {
@@ -131,7 +133,7 @@ function StreetPublic({ name, m, props, onClose, onEditHint, lockHolder }: { nam
     const bike = streetHasBikeLane(props, m);
     const illegal = featureHasIllegalParking(props);
     const reserved = featureHasReservedParking(props);
-    const arondat = String(props.arondat || "").trim();
+    const arondari = streetSchoolSlugs(props);
 
     return (
         <div className="sheet-body">
@@ -143,15 +145,15 @@ function StreetPublic({ name, m, props, onClose, onEditHint, lockHolder }: { nam
             </div>
 
             <ul className="flag-list">
-                {bikeStatus === "door" && (
-                    <li className="yes">✔ Pistă pe carosabil: între carosabil și mașinile parcate</li>
-                )}
-                {bikeStatus === "safe" && <li className="yes">✔ Pistă de biciclete: Da</li>}
-                {bikeStatus === "none" && <li className="no">✖ Pistă de biciclete: Nu</li>}
+                {bikeStatus === "door" && <li className="yes">✔ {BIKE_DOOR_LABEL}</li>}
+                {bikeStatus === "safe" && <li className="yes">✔ {BIKE_SAFE_LABEL}</li>}
+                {bikeStatus === "none" && <li className="no">✖ Pistă biciclete: Nu</li>}
                 {illegal && <li className="warn">⚠ Parcare ilegală pe trotuar: Da</li>}
                 {reserved && <li className="info">🅿️ Parcare amenajată pe trotuar: Da</li>}
-                {arondat && <li className="info">🏫 Arondată la: {schoolName(arondat, schools)}</li>}
-                {!bike && !illegal && !reserved && !arondat && bikeStatus === "unknown" && !shares && (
+                {arondari.length > 0 && (
+                    <li className="info">🏫 Arondată la: {arondari.map((slug) => schoolName(slug, schools)).join(", ")}</li>
+                )}
+                {!bike && !illegal && !reserved && arondari.length === 0 && bikeStatus === "unknown" && !shares && (
                     <li className="muted">Nu există date specifice pentru această stradă.</li>
                 )}
             </ul>
@@ -168,7 +170,7 @@ function StreetPublic({ name, m, props, onClose, onEditHint, lockHolder }: { nam
             {lockHolder ? <p className="sub">{lockHolder} editează acest segment.</p> : null}
             {onEditHint ? (
                 <button type="button" className="btn primary wide" onClick={onEditHint}>
-                    {shares || bike || illegal || reserved || arondat ? "Editează măsurătorile" : "Pornește editarea"}
+                    {shares || bike || illegal || reserved || arondari.length ? "Editează măsurătorile" : "Pornește editarea"}
                 </button>
             ) : null}
         </div>

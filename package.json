@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "start": "vite --host --port 5500",
     "fetch-osm": "node scripts/fetch-osm-streets.mjs",
+    "pull-edits": "node scripts/pull-prod-edits.mjs",
     "test": "vitest run"
   },
   "dependencies": {

@@ -1,16 +1,17 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { useApp } from "../store";
+import { BIKE_DOOR_LABEL, BIKE_SAFE_LABEL } from "../lib/layers";
 import {
   featureHasReservedParking,
   featureLengthMeters,
   hasAnyEdit,
-  LAYER_COLORS,
   resolveStreetMeasurement,
   streetHasDoorZoneBikeLane,
   streetHasIllegalParking,
   streetHasSafeBikeLane,
 } from "../lib/space";
+import { streetSchoolSlugs } from "../lib/schoolCatchment";
 
 function formatKm(meters: number) {
   const km = meters / 1000;
@@ -28,7 +29,6 @@ export function StatsPanel() {
   const seedMeasurements = useApp((s) => s.seedMeasurements);
   const filters = useApp((s) => s.filters);
   const layers = useApp((s) => s.layers);
-  const editMode = useApp((s) => s.editMode);
 
   const selected = new Set(filters.neighborhoods);
   const selectedSchools = new Set(filters.schools);
@@ -48,10 +48,9 @@ export function StatsPanel() {
   const doorBikeFeats = resolved.filter(({ props, m }) => streetHasDoorZoneBikeLane(props, m));
   const illegalFeats = resolved.filter(({ props, m }) => streetHasIllegalParking(props, m));
   const reservedFeats = resolved.filter(({ props }) => featureHasReservedParking(props));
-  const assigned = feats.filter((f) => {
-    const slug = String((f.properties as { arondat?: string })?.arondat || "").trim();
-    return Boolean(slug) && selectedSchools.has(slug);
-  }).length;
+  const assigned = feats.filter((f) =>
+    streetSchoolSlugs((f.properties || {}) as Record<string, unknown>).some((slug) => selectedSchools.has(slug))
+  ).length;
   const editedLocal = Object.values(measurements).filter(hasAnyEdit).length;
   const schoolCount = (schools?.features || []).filter((f) => {
     const slug = String((f.properties as { slug?: string })?.slug || "");
@@ -67,28 +66,6 @@ export function StatsPanel() {
   const bikeM = safeBikeM + doorBikeM;
   const illegalM = illegalFeats.reduce((s, { f }) => s + featureLengthMeters(f), 0);
   const reservedM = reservedFeats.reduce((s, { f }) => s + featureLengthMeters(f), 0);
-
-  const legend: { color: string; label: string }[] = [];
-  if (layers.buildings) {
-    legend.push(
-      { color: "#2f9e44", label: "Casă" },
-      { color: "#e03131", label: "Bloc" },
-      { color: "#868e96", label: "Altceva" },
-      { color: "#ced4da", label: "Necunoscut" }
-    );
-  } else {
-    if (layers.streetsBase) legend.push({ color: LAYER_COLORS.base, label: "Stradă (bază)" });
-    if (layers.bike && safeBike > 0) legend.push({ color: LAYER_COLORS.bike, label: "Pistă biciclete" });
-    if (layers.bikeDoor && doorBike > 0) legend.push({ color: LAYER_COLORS.bikeDoor, label: "Pistă pe carosabil" });
-    if (layers.reserved && reserved > 0) legend.push({ color: LAYER_COLORS.reserved, label: "Parcare amenajată pe trotuar" });
-    if (layers.illegal && illegal > 0) legend.push({ color: LAYER_COLORS.illegal, label: "Parcare ilegală pe trotuar" });
-    if (layers.schoolAssign && assigned > 0) {
-      legend.push({ color: LAYER_COLORS.schoolAssign, label: "Arondată unei școli" });
-    }
-    if (editMode && editedLocal > 0) {
-      legend.push({ color: LAYER_COLORS.edited, label: "Măsurători pe dispozitiv" });
-    }
-  }
 
   return (
     <AnimatePresence>
@@ -116,14 +93,14 @@ export function StatsPanel() {
           </div>
 
           <div className="stat-row">
-            <span>Pistă biciclete</span>
+            <span>{BIKE_SAFE_LABEL}</span>
             <b>
               {safeBike}
               {safeBikeM > 0 ? <small> · {formatKm(safeBikeM)} km</small> : null}
             </b>
           </div>
           <div className="stat-row">
-            <span>Pistă pe carosabil</span>
+            <span>{BIKE_DOOR_LABEL}</span>
             <b>
               {doorBike}
               {doorBikeM > 0 ? <small> · {formatKm(doorBikeM)} km</small> : null}
@@ -161,14 +138,6 @@ export function StatsPanel() {
           )}
 
           <p className="stats-note">Valorile urmează cartierele și școlile selectate în Filtre.</p>
-          <div className="legend-mini">
-            {legend.map((item) => (
-              <span key={item.label}>
-                <i style={{ background: item.color }} />
-                {item.label}
-              </span>
-            ))}
-          </div>
         </motion.aside>
       )}
     </AnimatePresence>
