@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, Bug, CheckCircle2, Info, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useApp } from "../store";
-import { panelSpring } from "../lib/uiMotion";
+import { panelSpring, springExit } from "../lib/uiMotion";
 import type { ImportIssue, MatchIssueCode } from "../lib/streetMatch";
 
 const SEV_ORDER = { error: 0, warn: 1, info: 2 } as const;
@@ -135,7 +135,7 @@ export function ImportReportPanel() {
           className="panel import-report-panel"
           initial={{ opacity: 0, x: -16 }}
           animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -12, pointerEvents: "none" }}
+          exit={springExit({ opacity: 0, x: -12 })}
           transition={panelSpring}
         >
           <div className="panel-head">

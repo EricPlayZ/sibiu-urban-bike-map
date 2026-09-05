@@ -44,6 +44,17 @@ function row(tone: RowTone, icon: keyof typeof ICONS, label: string, value: stri
   return `<div class="mp-row mp-${tone}"><span class="mp-ico">${ICONS[icon]}</span><div class="mp-copy"><span class="mp-label">${escapeHtml(label)}</span><span class="mp-value">${escapeHtml(value)}</span></div></div>`;
 }
 
+function schoolRow(slugs: string[], schools: GeoJSON.FeatureCollection | null) {
+  const names = slugs
+    .map((slug) => {
+      const label = escapeHtml(schoolLabel(slug, schools));
+      const color = schoolColor(slug);
+      return `<span class="mp-school-name" style="--c:${color}">${label}</span>`;
+    })
+    .join("");
+  return `<div class="mp-row mp-school mp-row-schools"><span class="mp-ico">${ICONS.school}</span><div class="mp-copy"><span class="mp-label">Arondată la</span><div class="mp-school-names">${names}</div></div></div>`;
+}
+
 function spaceBreakdownHtml(m?: Measurement | null, props?: Record<string, unknown>) {
   const shares = spaceShares(m);
   if (shares) {
@@ -113,11 +124,7 @@ export function streetPopupHtml(
   }
   if (illegal) rows.push(row("illegal", "illegal", "Parcare ilegală pe trotuar", "Da"));
   if (reserved) rows.push(row("reserved", "reserved", "Parcare amenajată pe trotuar", "Da"));
-  if (arondari.length) {
-    rows.push(
-      row("school", "school", "Arondată la", arondari.map((slug) => schoolLabel(slug, schools)).join(", "))
-    );
-  }
+  if (arondari.length) rows.push(schoolRow(arondari, schools));
   if (!bike && !illegal && !reserved && !arondari.length && !spaceHtml) {
     rows.push(row("muted", "empty", "Date stradă", "Nu există date specifice"));
   }
@@ -127,11 +134,6 @@ export function streetPopupHtml(
   if (bikeStatus === "door") chips.push(`<span class="mp-chip" style="--c:${LAYER_COLORS.bikeDoor}">${BIKE_DOOR_LABEL}</span>`);
   if (reserved) chips.push(`<span class="mp-chip" style="--c:${LAYER_COLORS.reserved}">Parcare</span>`);
   if (illegal) chips.push(`<span class="mp-chip" style="--c:${LAYER_COLORS.illegal}">Ilegal</span>`);
-  if (arondari.length) {
-    for (const slug of arondari) {
-      chips.push(`<span class="mp-chip" style="--c:${schoolColor(slug)}">${escapeHtml(schoolLabel(slug, schools))}</span>`);
-    }
-  }
   if (spaceShares(measurement)) {
     const chipLabel = measurement?.source === "local" ? "Editată local" : "Măsurată";
     chips.push(`<span class="mp-chip" style="--c:${LAYER_COLORS.edited}">${chipLabel}</span>`);

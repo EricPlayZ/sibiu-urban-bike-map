@@ -34,7 +34,7 @@ import { deriveStreetFixes, recordsHaveFix, type FixDrift, type StreetFixesFile 
 import { acquireLock, releaseLock } from "../lib/teamApi";
 import { BIKE_DOOR_LABEL, BIKE_SAFE_LABEL } from "../lib/layers";
 import { LAYER_COLORS } from "../lib/space";
-import { panelSpring } from "../lib/uiMotion";
+import { panelSpring, springExit } from "../lib/uiMotion";
 import { useApp } from "../store";
 import { FadeScrim } from "./FadeScrim";
 
@@ -285,7 +285,7 @@ export function CsvEditorPanel() {
             className="panel csv-editor-panel"
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 12, pointerEvents: "none" }}
+            exit={springExit({ opacity: 0, y: 12 })}
             transition={panelSpring}
             role="dialog"
             aria-modal="true"

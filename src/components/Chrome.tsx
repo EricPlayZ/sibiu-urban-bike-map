@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef } from "react";
-import { panelSpring } from "../lib/uiMotion";
+import { fadeExit, panelSpring, springExit } from "../lib/uiMotion";
 import { Bike, Building2, Bug, ChartColumn, Filter, GraduationCap, Layers, ListTree, Monitor, Moon, Pencil, Sun, Table2 } from "lucide-react";
 import { useApp } from "../store";
 import { layersMatchPreset } from "../lib/layers";
@@ -15,7 +15,7 @@ export function Toast() {
           className="toast"
           initial={{ y: 24, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 16, opacity: 0 }}
+          exit={springExit({ y: 16, opacity: 0 })}
           transition={panelSpring}
           role="status"
         >
@@ -33,7 +33,7 @@ export function Loader() {
   return (
     <AnimatePresence>
       {show && (
-        <motion.div className="loader" initial={{ opacity: 1 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.32 }}>
+        <motion.div className="loader" initial={{ opacity: 1 }} animate={{ opacity: 1 }} exit={fadeExit(undefined, 0.32)}>
           <div className="loader-card">
             <div className="loader-spin" />
             <div>

@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useApp } from "../store";
 import { mapLegendItems } from "../lib/mapLegend";
-import { popSpring } from "../lib/uiMotion";
+import { popSpring, springExit } from "../lib/uiMotion";
 
 export function MapLegend() {
   const ready = useApp((s) => s.ready);
@@ -59,7 +59,7 @@ export function MapLegend() {
             aria-label="Legendă hartă"
             initial={{ opacity: 0, y: 10, scale: 0.94 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.96, pointerEvents: "none" }}
+            exit={springExit({ opacity: 0, y: 8, scale: 0.96 })}
             transition={popSpring}
             style={{ originX: 0, originY: 1 }}
           >

@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Home, Building2, Package, HelpCircle, Pencil, X, Ruler, Road, Car, Footprints, ParkingSquare, Bike, Trees, TriangleAlert, Save, Trash2 } from "lucide-react";
 import { useApp } from "../store";
 import { isDesktopViewport } from "../lib/breakpoints";
-import { panelSpring } from "../lib/uiMotion";
+import { panelSpring, springExit } from "../lib/uiMotion";
 import { streetSchoolSlugs } from "../lib/schoolCatchment";
 import { BIKE_DOOR_LABEL, BIKE_SAFE_LABEL } from "../lib/layers";
 import { FORM_FIELDS, pct, spaceShares, featureHasIllegalParking, featureHasReservedParking, resolveStreetMeasurement, streetBikeLaneStatus, streetHasBikeLane, type Measurement } from "../lib/space";
@@ -84,14 +84,7 @@ export function DetailSheet() {
                         className="sheet"
                         initial={desktop ? { opacity: 0, y: 16 } : { y: "110%" }}
                         animate={desktop ? { opacity: 1, y: 0 } : { y: 0 }}
-                        exit={{
-                            ...(desktop ? { opacity: 0, y: 12 } : { y: "110%" }),
-                            pointerEvents: "none",
-                            transition: {
-                                ...panelSpring,
-                                pointerEvents: { duration: 0 },
-                            },
-                        }}
+                        exit={springExit(desktop ? { opacity: 0, y: 12 } : { y: "110%" })}
                         transition={panelSpring}
                         role="dialog"
                         aria-modal="true"

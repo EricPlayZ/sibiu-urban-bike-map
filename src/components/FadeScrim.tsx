@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { overlayTransition } from "../lib/uiMotion";
+import { fadeExit, overlayTransition } from "../lib/uiMotion";
 
 export function FadeScrim({
   className = "scrim",
@@ -16,7 +16,7 @@ export function FadeScrim({
       className={className}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      exit={fadeExit()}
       transition={overlayTransition}
       onClick={onClick}
       aria-label={label}

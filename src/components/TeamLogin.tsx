@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { loginFailureMessage } from "../lib/teamApi";
-import { overlayTransition, panelSpring } from "../lib/uiMotion";
+import { fadeExit, panelSpring } from "../lib/uiMotion";
 import { useApp } from "../store";
 
 export function TeamLogin() {
@@ -48,8 +48,7 @@ export function TeamLogin() {
           aria-labelledby="team-login-title"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={overlayTransition}
+          exit={fadeExit()}
         >
           <button type="button" className="team-login-scrim" onClick={closeTeamLogin} aria-label="Închide" />
           <motion.div

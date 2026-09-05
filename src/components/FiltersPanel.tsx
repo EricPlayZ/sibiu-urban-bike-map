@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { Bike, CheckCheck, Eye, GraduationCap, Leaf, ParkingSquare, Ruler, X } from "lucide-react";
 import { DESKTOP_MEDIA } from "../lib/breakpoints";
-import { panelSpring } from "../lib/uiMotion";
+import { panelSpring, springExit } from "../lib/uiMotion";
 import { useApp } from "../store";
 import { FadeScrim } from "./FadeScrim";
 import { schoolColor } from "../lib/schoolColors";
@@ -66,14 +66,7 @@ export function FiltersPanel() {
             className="panel filters-panel"
             initial={desktop ? { x: 24, opacity: 0 } : { y: 16, opacity: 0 }}
             animate={desktop ? { x: 0, opacity: 1 } : { y: 0, opacity: 1 }}
-            exit={{
-              ...(desktop ? { x: 16, opacity: 0 } : { y: 12, opacity: 0 }),
-              pointerEvents: "none",
-              transition: {
-                ...panelSpring,
-                pointerEvents: { duration: 0 },
-              },
-            }}
+            exit={springExit(desktop ? { x: 16, opacity: 0 } : { y: 12, opacity: 0 })}
             transition={panelSpring}
           >
             <div className="panel-head">

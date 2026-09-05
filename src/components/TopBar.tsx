@@ -18,7 +18,7 @@ import {
   Table2,
 } from "lucide-react";
 import { useApp } from "../store";
-import { panelSpring } from "../lib/uiMotion";
+import { panelSpring, popExit, springExit } from "../lib/uiMotion";
 import { SearchControl } from "./SearchControl";
 import { BASEMAPS } from "../lib/basemaps";
 import type { BasemapId } from "../lib/space";
@@ -151,7 +151,7 @@ export function TopBar() {
 
       <AnimatePresence>
         {editMode && (
-          <motion.div className="edit-rail" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={panelSpring}>
+          <motion.div className="edit-rail" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={springExit({ opacity: 0, y: -8 })} transition={panelSpring}>
             <button type="button" onClick={doExport}>
               <Download size={16} />
               Export JSON
@@ -170,7 +170,7 @@ export function TopBar() {
             className="popover basemap-pop"
             initial={{ opacity: 0, scale: 0.96, y: -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: -6, pointerEvents: "none", transition: { pointerEvents: { duration: 0 } } }}
+            exit={popExit()}
             transition={panelSpring}
           >
             <div className="pop-title">
@@ -193,7 +193,7 @@ export function TopBar() {
             className="popover theme-pop"
             initial={{ opacity: 0, scale: 0.96, y: -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: -6, pointerEvents: "none", transition: { pointerEvents: { duration: 0 } } }}
+            exit={popExit()}
             transition={panelSpring}
           >
             <div className="pop-title">Temă interfață</div>
