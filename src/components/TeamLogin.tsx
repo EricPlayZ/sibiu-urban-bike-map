@@ -65,10 +65,9 @@ export function TeamLogin() {
                 <X size={18} strokeWidth={2.25} />
               </button>
             </div>
-            <p className="sub">Doar echipa poate edita harta. Introdu numele și parola primite.</p>
-            <form className="team-login-form" onSubmit={(e) => void onSubmit(e)}>
-              <label className="field">
-                Nume (îl văd colegii la lock)
+        <form className="team-login-form" onSubmit={(e) => void onSubmit(e)}>
+          <label className="field">
+            Nume
                 <input
                   type="text"
                   name="name"
