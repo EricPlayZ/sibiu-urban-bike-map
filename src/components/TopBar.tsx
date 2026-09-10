@@ -16,6 +16,7 @@ import {
   GraduationCap,
   Bug,
   Table2,
+  Timer,
 } from "lucide-react";
 import { useApp } from "../store";
 import { panelSpring, popExit, springExit } from "../lib/uiMotion";
@@ -29,6 +30,7 @@ import { layersMatchPreset } from "../lib/layers";
 export function TopBar() {
   const editMode = useApp((s) => s.editMode);
   const toggleEditAccess = useApp((s) => s.toggleEditAccess);
+  const viewMode = useApp((s) => s.viewMode);
   const setViewMode = useApp((s) => s.setViewMode);
   const layers = useApp((s) => s.layers);
   const toggleFilters = useApp((s) => s.toggleFilters);
@@ -92,6 +94,10 @@ export function TopBar() {
           <button type="button" className={layersMatchPreset(layers, "schools", editMode ? { ignore: ["streetsBase"] } : undefined) ? "on" : ""} onClick={() => setViewMode("schools")}>
             <GraduationCap size={16} strokeWidth={2.25} aria-hidden />
             Școli
+          </button>
+          <button type="button" className={viewMode === "reach" ? "on" : ""} onClick={() => setViewMode("reach")} aria-pressed={viewMode === "reach"} title="Izocrone 5 / 10 / 15 min">
+            <Timer size={16} strokeWidth={2.25} aria-hidden />
+            Acces
           </button>
         </div>
 

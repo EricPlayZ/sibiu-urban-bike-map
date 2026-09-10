@@ -1,10 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import maplibregl, { Map, GeoJSONSource, Marker, Popup } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useApp } from "../store";
 import { BASEMAPS } from "../lib/basemaps";
 import { CompassDialControl } from "../lib/northControl";
-import { enableChasingWheelZoom } from "../lib/chasingWheelZoom";
+import { enableChasingWheelZoom, type ChasingWheelZoom } from "../lib/chasingWheelZoom";
+import { isMapUiLocked, setMapHandlersEnabled } from "../lib/mapUiLock";
 import { LAYER_COLORS, type BasemapId } from "../lib/space";
 import { buildingFillColorExpr } from "../lib/buildingTypes";
 import { buildingPopupHtml, neighborhoodPopupHtml, schoolMarkerHtml, schoolPopupHtml, streetPopupHtml } from "../lib/streetPopup";
@@ -23,12 +24,24 @@ import { hitAnchor, hitPrimaryFeature, type SearchHit } from "../lib/mapSearch";
 import { isMobileViewport } from "../lib/breakpoints";
 import { hitRadiusPx, queryClosestFeature, queryRenderedNear } from "../lib/mapHit";
 import { explodeSchoolColorFeatures, schoolColor } from "../lib/schoolColors";
+import {
+  BIKE_KMH,
+  WALK_KMH,
+  computeIsochrones,
+  ensureIsochroneEngine,
+  lastIsochroneFeatures,
+  setLastIsochroneFeatures,
+  setLastReachOrigin,
+  type IsochroneEngine,
+} from "../lib/isochrone";
+import { describeReach, emptyIsochroneStats, formatStatNumber, shortSchoolName, type IsochroneStats } from "../lib/isochroneStats";
 
 const SRC = "streets";
 const SCH = "school-stripes";
 const NB = "nb";
 const NB_LABELS = "nb-labels";
 const BLD = "bld";
+const ISO = "isochrone";
 
 const STREET_HIT_LAYERS = [
   "streets-illegal",
@@ -87,9 +100,66 @@ export function MapView() {
   const layers = useApp((s) => s.layers);
   const editMode = useApp((s) => s.editMode);
   const searchFocus = useApp((s) => s.searchFocus);
+  const isochroneOrigin = useApp((s) => s.isochroneOrigin);
+  const isochroneProfile = useApp((s) => s.isochroneProfile);
+  const isochroneMinutes = useApp((s) => s.isochroneMinutes);
+  const isochronePinned = useApp((s) => s.isochronePinned);
+  const isochroneStatus = useApp((s) => s.isochroneStatus);
+  const mapUiLocked = useApp((s) => isMapUiLocked(s));
   const schoolMarkersRef = useRef<Marker[]>([]);
   const streetPopupRef = useRef<Popup | null>(null);
   const skipPopupCloseRef = useRef(false);
+  const reachMarkerRef = useRef<Marker | null>(null);
+  const reachSkipClickRef = useRef(false);
+  const reachEngineRef = useRef<IsochroneEngine | null>(null);
+  const reachBusyRef = useRef(false);
+  const reachPendingRef = useRef<{ lng: number; lat: number } | null>(null);
+  const lastLlRef = useRef<{ lng: number; lat: number } | null>(null);
+  const lastPxRef = useRef<{ x: number; y: number } | null>(null);
+  const cursorPxRef = useRef<{ x: number; y: number } | null>(null);
+  const chaseZoomRef = useRef<ChasingWheelZoom | null>(null);
+  const profileRef = useRef(isochroneProfile);
+  const minutesRef = useRef(isochroneMinutes);
+  const pinnedRef = useRef(isochronePinned);
+  profileRef.current = isochroneProfile;
+  minutesRef.current = isochroneMinutes;
+  pinnedRef.current = isochronePinned;
+
+  const flushReachCompute = () => {
+    const map = mapRef.current;
+    const engine = reachEngineRef.current;
+    const pending = reachPendingRef.current;
+    if (!map || !engine || !pending || reachBusyRef.current) return;
+    reachPendingRef.current = null;
+    reachBusyRef.current = true;
+    const result = computeIsochrones(engine, pending, {
+      profiles: [profileRef.current],
+      minutes: [minutesRef.current],
+    });
+    applyIsochroneToMap(map, result);
+    lastLlRef.current = pending;
+    publishReach(pending, result, reachMarkerRef.current, pinnedRef.current, profileRef.current);
+    reachBusyRef.current = false;
+    if (reachPendingRef.current) requestAnimationFrame(flushReachCompute);
+  };
+
+  const scheduleReachCompute = (map: Map, lng: number, lat: number, point?: { x: number; y: number }) => {
+    if (point && lastPxRef.current) {
+      const dx = point.x - lastPxRef.current.x;
+      const dy = point.y - lastPxRef.current.y;
+      if (dx * dx + dy * dy < 49) return;
+    }
+    if (point) lastPxRef.current = point;
+    reachPendingRef.current = { lng, lat };
+    if (!reachEngineRef.current) {
+      void ensureIsochroneEngine().then((engine) => {
+        reachEngineRef.current = engine;
+        flushReachCompute();
+      });
+      return;
+    }
+    if (!reachBusyRef.current) requestAnimationFrame(flushReachCompute);
+  };
 
   const dismissSearchHighlight = () => {
     const map = mapRef.current;
@@ -171,16 +241,23 @@ export function MapView() {
       new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: false }),
       "bottom-right"
     );
-    const stopWheelZoom = enableChasingWheelZoom(map);
+    const chase = enableChasingWheelZoom(map);
+    chaseZoomRef.current = chase;
     mapRef.current = map;
     appliedBasemap.current = initial;
+    if (isMapUiLocked(useApp.getState())) {
+      chase.abort();
+      setMapHandlersEnabled(map, false);
+      containerRef.current?.classList.add("is-ui-locked");
+    }
 
     const cancel = whenStyleReady(map, () => {
       if (useApp.getState().ready) rebuildOverlays(map);
     });
 
     return () => {
-      stopWheelZoom();
+      chase.stop();
+      chaseZoomRef.current = null;
       cancel();
       stopSearchGlow(map);
       streetPopupRef.current?.remove();
@@ -190,6 +267,20 @@ export function MapView() {
       appliedBasemap.current = null;
     };
   }, []);
+
+  useLayoutEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (mapUiLocked) {
+      chaseZoomRef.current?.abort();
+      map.stop();
+      setMapHandlersEnabled(map, false);
+      containerRef.current?.classList.add("is-ui-locked");
+    } else {
+      setMapHandlersEnabled(map, true);
+      containerRef.current?.classList.remove("is-ui-locked");
+    }
+  }, [mapUiLocked]);
 
   // Date gata — montează overlay-urile pe stilul curent
   useEffect(() => {
@@ -296,6 +387,26 @@ export function MapView() {
 
     const onClick = (e: maplibregl.MapMouseEvent) => {
       const st = useApp.getState();
+      if (isMapUiLocked(st)) return;
+      if (st.viewMode === "reach") {
+        if (reachSkipClickRef.current) return;
+        clearStreetPopup();
+        dismissSearchHighlight();
+        st.closeSheet();
+        lastLlRef.current = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+        st.setIsochroneOrigin(e.lngLat.lng, e.lngLat.lat, true);
+        const mapNow = mapRef.current;
+        const engine = reachEngineRef.current;
+        if (mapNow && engine) {
+          const result = computeIsochrones(engine, lastLlRef.current, {
+            profiles: [st.isochroneProfile],
+            minutes: [st.isochroneMinutes],
+          });
+          applyIsochroneToMap(mapNow, result);
+          publishReach(lastLlRef.current, result, reachMarkerRef.current, true, st.isochroneProfile);
+        }
+        return;
+      }
       const radius = hitRadiusPx(e.originalEvent);
       if (st.layers.buildings && map.getLayer(BLD + "-fill")) {
         const bhits = map.queryRenderedFeatures(e.point, { layers: [BLD + "-fill"] });
@@ -343,18 +454,65 @@ export function MapView() {
     };
 
     const onMove = (e: maplibregl.MapMouseEvent) => {
+      if (useApp.getState().viewMode === "reach") {
+        map.getCanvas().style.cursor = "crosshair";
+        return;
+      }
       const layers = [...STREET_HIT_LAYERS, BLD + "-fill"].filter((id) => map.getLayer(id));
       const hits = queryRenderedNear(map, e.point, layers, hitRadiusPx(e.originalEvent));
       map.getCanvas().style.cursor = hits.length ? "pointer" : "";
     };
 
+    const canvasPoint = (clientX: number, clientY: number) => {
+      const rect = map.getCanvas().getBoundingClientRect();
+      return { x: clientX - rect.left - map.getCanvas().clientLeft, y: clientY - rect.top - map.getCanvas().clientTop };
+    };
+
+    const trackLiveReach = (point: { x: number; y: number }, buttons: number, compute: boolean) => {
+      if (useApp.getState().viewMode !== "reach") return;
+      if (!fineHover() || pinnedRef.current) return;
+      if (isMapUiLocked(useApp.getState())) return;
+      if (buttons) return;
+      if (map.dragPan.isActive()) return;
+      const canvas = map.getCanvas();
+      if (point.x < 0 || point.y < 0 || point.x > canvas.clientWidth || point.y > canvas.clientHeight) return;
+      cursorPxRef.current = point;
+      const ll = map.unproject([point.x, point.y]);
+      reachMarkerRef.current?.setLngLat(ll);
+      if (compute) scheduleReachCompute(map, ll.lng, ll.lat, point);
+    };
+
+    const onPointerMove = (ev: PointerEvent) => {
+      trackLiveReach(canvasPoint(ev.clientX, ev.clientY), ev.buttons, true);
+    };
+
+    const onCameraMove = () => {
+      const px = cursorPxRef.current;
+      if (!px) return;
+      trackLiveReach(px, 0, false);
+    };
+
+    const onZoomSettled = () => {
+      const px = cursorPxRef.current;
+      if (!px) return;
+      lastPxRef.current = null;
+      trackLiveReach(px, 0, true);
+    };
+
+    const canvasEl = map.getCanvasContainer();
+    canvasEl.addEventListener("pointermove", onPointerMove);
     map.on("click", onClick);
     map.on("mousemove", onMove);
+    map.on("move", onCameraMove);
+    map.on("zoomend", onZoomSettled);
     return () => {
+      canvasEl.removeEventListener("pointermove", onPointerMove);
       map.off("click", onClick);
       map.off("mousemove", onMove);
+      map.off("move", onCameraMove);
+      map.off("zoomend", onZoomSettled);
     };
-  }, [ready, selectStreet, selectBuilding]);
+  }, [ready, selectStreet, selectBuilding, viewMode]);
 
   // La editare, închide popup-ul de pe hartă (editarea folosește panoul)
   useEffect(() => {
@@ -367,6 +525,132 @@ export function MapView() {
   useEffect(() => {
     containerRef.current?.classList.toggle("is-search-focus", Boolean(searchFocus));
   }, [searchFocus]);
+
+  useEffect(() => {
+    if (viewMode !== "reach") return;
+    void ensureIsochroneEngine().then((engine) => {
+      reachEngineRef.current = engine;
+      const map = mapRef.current;
+      const ll = lastLlRef.current || useApp.getState().isochroneOrigin;
+      const st = useApp.getState();
+      if (map && ll && st.viewMode === "reach") {
+        const result = computeIsochrones(engine, ll, { profiles: [st.isochroneProfile], minutes: [st.isochroneMinutes] });
+        applyIsochroneToMap(map, result);
+        publishReach(ll, result, reachMarkerRef.current, pinnedRef.current, st.isochroneProfile);
+      }
+    });
+  }, [viewMode]);
+
+  useEffect(() => {
+    containerRef.current?.classList.toggle("is-reach", viewMode === "reach");
+    const map = mapRef.current;
+    if (map) map.getCanvas().style.cursor = viewMode === "reach" ? "crosshair" : "";
+  }, [viewMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || viewMode !== "reach") return;
+    const ll = lastLlRef.current || isochroneOrigin;
+    const engine = reachEngineRef.current;
+    if (!ll || !engine) return;
+    const result = computeIsochrones(engine, ll, { profiles: [isochroneProfile], minutes: [isochroneMinutes] });
+    applyIsochroneToMap(map, result);
+    publishReach(ll, result, reachMarkerRef.current, pinnedRef.current, isochroneProfile);
+  }, [ready, viewMode, isochroneProfile, isochroneMinutes]);
+
+  useEffect(() => {
+    if (viewMode !== "reach" || !isochronePinned || isochroneOrigin || !lastLlRef.current) return;
+    const ll = lastLlRef.current;
+    useApp.getState().setIsochroneOrigin(ll.lng, ll.lat, true);
+  }, [viewMode, isochronePinned, isochroneOrigin]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map?.getSource(ISO) || isochroneStatus !== "idle") return;
+    applyIsochroneToMap(map, { ok: false });
+    lastLlRef.current = null;
+    lastPxRef.current = null;
+    const empty = emptyIsochroneStats();
+    useApp.getState().setIsochroneStats(empty);
+    paintReachPin(reachMarkerRef.current?.getElement() ?? null, {
+      live: fineHover() && !pinnedRef.current,
+      profile: profileRef.current,
+      minutes: minutesRef.current,
+      stats: empty,
+    });
+  }, [isochroneStatus]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+
+    const clearPin = () => {
+      reachMarkerRef.current?.remove();
+      reachMarkerRef.current = null;
+    };
+
+    if (viewMode !== "reach") {
+      clearPin();
+      return;
+    }
+
+    const live = fineHover() && !isochronePinned;
+    if (!reachMarkerRef.current) {
+      const marker = new maplibregl.Marker({ element: reachPinEl(live), anchor: "center", draggable: !live })
+        .setLngLat(isochroneOrigin || map.getCenter())
+        .addTo(map);
+      marker.on("dragstart", () => {
+        reachSkipClickRef.current = true;
+      });
+      marker.on("dragend", () => {
+        const ll = marker.getLngLat();
+        lastLlRef.current = { lng: ll.lng, lat: ll.lat };
+        useApp.getState().setIsochroneOrigin(ll.lng, ll.lat, true);
+        const engine = reachEngineRef.current;
+        if (engine) {
+          const result = computeIsochrones(engine, lastLlRef.current, {
+            profiles: [profileRef.current],
+            minutes: [minutesRef.current],
+          });
+          applyIsochroneToMap(map, result);
+          publishReach(lastLlRef.current, result, marker, true, profileRef.current);
+        }
+        window.setTimeout(() => {
+          reachSkipClickRef.current = false;
+        }, 0);
+      });
+      marker.getElement().addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        reachSkipClickRef.current = true;
+        window.setTimeout(() => {
+          reachSkipClickRef.current = false;
+        }, 0);
+        if (!fineHover()) return;
+        if (pinnedRef.current) useApp.getState().setIsochronePinned(false);
+      });
+      reachMarkerRef.current = marker;
+    }
+
+    const marker = reachMarkerRef.current;
+    const el = marker.getElement();
+    marker.setDraggable(!live);
+    el.style.pointerEvents = live ? "none" : "auto";
+    paintReachPin(el, {
+      live,
+      profile: isochroneProfile,
+      minutes: isochroneMinutes,
+      stats: useApp.getState().isochroneStats,
+    });
+    if (isochronePinned && isochroneOrigin) marker.setLngLat([isochroneOrigin.lng, isochroneOrigin.lat]);
+  }, [ready, viewMode, isochroneOrigin, isochronePinned, isochroneProfile, isochroneMinutes]);
+
+  useEffect(() => {
+    return () => {
+      reachMarkerRef.current?.remove();
+      reachMarkerRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -418,11 +702,13 @@ function pushData(map: Map) {
   }
   const nb = st.paintedNeighborhoods();
   if (nb && map.getSource(NB)) (map.getSource(NB) as GeoJSONSource).setData(nb);
-  if (nb && map.getSource(NB_LABELS)) {
-    (map.getSource(NB_LABELS) as GeoJSONSource).setData(neighborhoodLabelCollection(nb));
+  const labelNb = st.viewMode === "reach" ? st.neighborhoods : nb;
+  if (labelNb && map.getSource(NB_LABELS)) {
+    (map.getSource(NB_LABELS) as GeoJSONSource).setData(neighborhoodLabelCollection(labelNb));
   }
   const b = st.buildings;
   if (b && map.getSource(BLD)) (map.getSource(BLD) as GeoJSONSource).setData(b);
+  if (map.getSource(ISO)) (map.getSource(ISO) as GeoJSONSource).setData(lastIsochroneFeatures());
 }
 
 function applyNeighborhoodStyle(map: Map) {
@@ -481,8 +767,35 @@ function applyLayerVisibility(map: Map) {
   setVis(map, "nb-line", layers.neighborhoods);
   setVis(map, "nb-label", layers.neighborhoods);
 
+  const reachOn = useApp.getState().viewMode === "reach";
+  if (reachOn) {
+    setVis(map, "nb-fill", false);
+    setVis(map, "nb-halo", false);
+    setVis(map, "nb-line", false);
+    setVis(map, "nb-label", true);
+    setVis(map, "streets-bike", false);
+    setVis(map, "streets-bike-door", false);
+    setVis(map, "streets-reserved", false);
+    setVis(map, "streets-illegal", false);
+    setVis(map, "streets-school", false);
+    setVis(map, "streets-base", true);
+    if (map.getLayer("nb-label")) map.setPaintProperty("nb-label", "text-halo-width", 3.2);
+  } else if (map.getLayer("nb-label")) {
+    const darkBg = ["dark", "satellite"].includes(useApp.getState().basemap);
+    map.setPaintProperty("nb-label", "text-halo-width", darkBg ? 1.6 : 1.8);
+  }
+  setVis(map, "isochrone-fill", reachOn);
+  setVis(map, "isochrone-line-halo", reachOn);
+  setVis(map, "isochrone-line", reachOn);
+  setVis(map, "isochrone-net", reachOn);
+  if (map.getLayer("isochrone-fill")) map.setFilter("isochrone-fill", ["==", ["get", "kind"], "band"]);
+  if (map.getLayer("isochrone-line-halo")) map.setFilter("isochrone-line-halo", ["==", ["get", "kind"], "band"]);
+  if (map.getLayer("isochrone-line")) map.setFilter("isochrone-line", ["==", ["get", "kind"], "band"]);
+  if (map.getLayer("isochrone-net")) map.setFilter("isochrone-net", ["==", ["get", "kind"], "net"]);
+
   if (map.getLayer("streets-base")) {
-    map.setPaintProperty("streets-base", "line-opacity", layers.buildings && !layers.bike ? 0.28 : 0.55);
+    const dim = reachOn ? 0.2 : layers.buildings && !layers.bike ? 0.28 : 0.55;
+    map.setPaintProperty("streets-base", "line-opacity", dim);
   }
   applySearchDim(map, useApp.getState().searchFocus?.hit ?? null);
 }
@@ -496,6 +809,7 @@ function ensureOverlayOrder(map: Map) {
   const bottomToTop = [
     "nb-fill",
     ...searchGlowFillLayerIds(),
+    "isochrone-fill",
     "streets-base",
     "streets-school",
     "streets-bike",
@@ -510,6 +824,9 @@ function ensureOverlayOrder(map: Map) {
     "nb-line",
     "streets-label-halo",
     "streets-label",
+    "isochrone-net",
+    "isochrone-line-halo",
+    "isochrone-line",
     "nb-label",
     ...searchGlowOverlayLayerIds(),
   ];
@@ -533,6 +850,7 @@ function addSourcesAndLayers(map: Map) {
   if (!map.getSource(SCH)) map.addSource(SCH, { type: "geojson", data: empty(), tolerance: 0.4 });
   if (!map.getSource(NB)) map.addSource(NB, { type: "geojson", data: empty(), tolerance: 0.75 });
   if (!map.getSource(NB_LABELS)) map.addSource(NB_LABELS, { type: "geojson", data: empty() });
+  if (!map.getSource(ISO)) map.addSource(ISO, { type: "geojson", data: empty() });
   addSearchHighlightLayers(map);
 
   if (!map.getLayer("nb-fill")) {
@@ -742,6 +1060,7 @@ function addSourcesAndLayers(map: Map) {
   }
 
   addStreetLabelLayer(map);
+  addIsochroneLayers(map);
   applyNeighborhoodStyle(map);
   ensureOverlayOrder(map);
 }
@@ -884,6 +1203,184 @@ function addBuildingLayers(map: Map) {
   // Keep buildings visible when zoomed out (older sessions may still have a high minzoom).
   if (map.getLayer(BLD + "-fill")) map.setLayerZoomRange(BLD + "-fill", 0, 24);
   if (map.getLayer(BLD + "-line")) map.setLayerZoomRange(BLD + "-line", 0, 24);
+}
+
+function fineHover() {
+  return typeof window !== "undefined" && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+}
+
+function applyIsochroneToMap(map: Map, result: { ok: true; features: GeoJSON.FeatureCollection } | { ok: false }) {
+  const fc = result.ok ? result.features : { type: "FeatureCollection" as const, features: [] };
+  setLastIsochroneFeatures(fc);
+  if (map.getSource(ISO)) (map.getSource(ISO) as GeoJSONSource).setData(fc);
+}
+
+function publishReach(
+  origin: { lng: number; lat: number },
+  result: { ok: true; features: GeoJSON.FeatureCollection } | { ok: false },
+  marker: Marker | null,
+  pinned: boolean,
+  profile: string
+) {
+  setLastReachOrigin(origin);
+  const st = useApp.getState();
+  const stats = describeReach(
+    origin,
+    result.ok ? result.features : { type: "FeatureCollection", features: [] },
+    st.neighborhoods,
+    st.schools
+  );
+  st.setIsochroneStats(stats);
+  paintReachPin(marker?.getElement() ?? null, {
+    live: fineHover() && !pinned,
+    profile,
+    minutes: st.isochroneMinutes,
+    stats,
+  });
+}
+
+function fillReachChips(el: HTMLElement | null, names: string[]) {
+  if (!el) return;
+  el.replaceChildren();
+  for (const name of names) {
+    const s = document.createElement("span");
+    s.className = "reach-chip";
+    s.textContent = name;
+    el.append(s);
+  }
+}
+
+function paintReachPin(
+  el: HTMLElement | null,
+  opts: { live: boolean; profile: string; minutes: number; stats: IsochroneStats }
+) {
+  if (!el) return;
+  el.classList.add("reach-pin");
+  el.classList.toggle("is-live", opts.live);
+  el.classList.toggle("is-pinned", !opts.live);
+  el.classList.toggle("is-walk", opts.profile === "walk");
+  el.classList.toggle("is-bike", opts.profile !== "walk");
+  el.style.pointerEvents = opts.live ? "none" : "auto";
+  const hint = el.querySelector<HTMLElement>(".reach-pin-hint");
+  if (hint) hint.hidden = opts.live;
+  const card = el.querySelector<HTMLElement>(".reach-pin-card");
+  if (!card) return;
+  const stats = opts.stats;
+  const show = Boolean(stats.here || stats.reachable);
+  card.hidden = !show;
+  if (!show) return;
+  const here = card.querySelector<HTMLElement>(".reach-pin-here");
+  const min = card.querySelector<HTMLElement>("[data-min]");
+  const speed = card.querySelector<HTMLElement>("[data-speed]");
+  const area = card.querySelector<HTMLElement>("[data-area]");
+  const km = card.querySelector<HTMLElement>("[data-km]");
+  const metrics = card.querySelector<HTMLElement>(".reach-pin-metrics");
+  const nbBlock = card.querySelector<HTMLElement>("[data-nb]");
+  const schoolBlock = card.querySelector<HTMLElement>("[data-schools]");
+  const empty = card.querySelector<HTMLElement>(".reach-pin-empty");
+  if (here) here.textContent = stats.here || "În afara cartierelor";
+  if (!stats.reachable) {
+    if (metrics) metrics.hidden = true;
+    if (nbBlock) nbBlock.hidden = true;
+    if (schoolBlock) schoolBlock.hidden = true;
+    if (empty) {
+      empty.hidden = false;
+      empty.textContent = "Departe de rețeaua de străzi";
+    }
+    return;
+  }
+  if (metrics) metrics.hidden = false;
+  if (empty) empty.hidden = true;
+  if (min) min.textContent = String(opts.minutes);
+  if (speed) speed.textContent = String(opts.profile === "walk" ? WALK_KMH : BIKE_KMH);
+  if (area) area.textContent = formatStatNumber(stats.areaKm2);
+  if (km) km.textContent = formatStatNumber(stats.streetKm);
+
+  const nbNames = stats.reached;
+  if (nbBlock) {
+    const label = nbBlock.querySelector<HTMLElement>("[data-nb-label]");
+    const count = nbBlock.querySelector<HTMLElement>("[data-nb-count]");
+    if (label) label.textContent = "Cartiere";
+    if (count) count.textContent = `${nbNames.length} ${nbNames.length === 1 ? "cartier" : "cartiere"}`;
+    fillReachChips(nbBlock.querySelector<HTMLElement>("[data-nb-chips]"), nbNames);
+    nbBlock.hidden = nbNames.length === 0;
+  }
+
+  const schoolNames = stats.schoolNames.map(shortSchoolName);
+  if (schoolBlock) {
+    const count = schoolBlock.querySelector<HTMLElement>("[data-schools-count]");
+    if (count) {
+      count.textContent = `${stats.schoolCount} ${stats.schoolCount === 1 ? "școală" : "școli"}`;
+    }
+    fillReachChips(schoolBlock.querySelector<HTMLElement>("[data-school-chips]"), schoolNames);
+    schoolBlock.hidden = stats.schoolCount === 0;
+  }
+}
+
+function reachPinEl(live: boolean) {
+  const el = document.createElement("div");
+  el.className = "reach-pin is-bike";
+  el.innerHTML = `<span class="reach-pin-pulse"></span><span class="reach-pin-dot"></span><div class="reach-pin-hint" hidden><span class="reach-pin-hint-desk">Click pe punct ca să-l muți</span><span class="reach-pin-hint-touch">Ține apăsat ca să muți</span></div><div class="reach-pin-card" hidden><div class="reach-pin-here"></div><div class="reach-pin-metrics"><div class="reach-pin-metric"><b data-min></b><span>min</span></div><div class="reach-pin-metric is-speed"><b data-speed></b><span>km/h</span></div><div class="reach-pin-metric"><b data-area></b><span>km²</span></div><div class="reach-pin-metric"><b data-km></b><span>km străzi</span></div></div><div class="reach-pin-block" data-nb hidden><div class="reach-pin-label"><span data-nb-label></span><em data-nb-count></em></div><div class="reach-pin-chips" data-nb-chips></div></div><div class="reach-pin-block" data-schools hidden><div class="reach-pin-label"><span>Școli</span><em data-schools-count></em></div><div class="reach-pin-chips" data-school-chips></div></div><div class="reach-pin-empty" hidden></div></div>`;
+  paintReachPin(el, { live, profile: "bike", minutes: 5, stats: emptyIsochroneStats() });
+  return el;
+}
+
+function addIsochroneLayers(map: Map) {
+  if (!map.getLayer("isochrone-fill")) {
+    map.addLayer({
+      id: "isochrone-fill",
+      type: "fill",
+      source: ISO,
+      filter: ["==", ["get", "kind"], "band"],
+      layout: { visibility: "none" },
+      paint: {
+        "fill-color": ["coalesce", ["get", "fill"], "#00C853"],
+        "fill-opacity": ["coalesce", ["get", "opacity"], 0.5],
+      },
+    });
+  }
+  if (!map.getLayer("isochrone-net")) {
+    map.addLayer({
+      id: "isochrone-net",
+      type: "line",
+      source: ISO,
+      filter: ["==", ["get", "kind"], "net"],
+      layout: { visibility: "none", "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ["coalesce", ["get", "net"], "#00E676"],
+        "line-width": 2.7,
+        "line-opacity": 0.92,
+      },
+    });
+  }
+  if (!map.getLayer("isochrone-line-halo")) {
+    map.addLayer({
+      id: "isochrone-line-halo",
+      type: "line",
+      source: ISO,
+      filter: ["==", ["get", "kind"], "band"],
+      layout: { visibility: "none", "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": "#ffffff",
+        "line-width": 5.5,
+        "line-opacity": 0.8,
+      },
+    });
+  }
+  if (!map.getLayer("isochrone-line")) {
+    map.addLayer({
+      id: "isochrone-line",
+      type: "line",
+      source: ISO,
+      filter: ["==", ["get", "kind"], "band"],
+      layout: { visibility: "none", "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ["coalesce", ["get", "line"], "#01331c"],
+        "line-width": 2.2,
+        "line-opacity": 0.95,
+      },
+    });
+  }
 }
 
 function empty(): GeoJSON.FeatureCollection {

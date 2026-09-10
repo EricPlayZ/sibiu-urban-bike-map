@@ -33,7 +33,7 @@ export type SpaceShares = {
   equity: number;
 };
 
-export type ViewMode = "space" | "buildings" | "schools";
+export type ViewMode = "space" | "buildings" | "schools" | "reach";
 export type BasemapId = "light" | "dark" | "satellite";
 
 /** Culori din harta originală (QGIS / repo EricPlayZ) + tipuri de pistă. */

@@ -27,12 +27,22 @@ function wheelPoint(point: PointLike | PointLike[] | undefined): PointLike | und
   return Array.isArray(point) ? point[0] : point;
 }
 
+export type ChasingWheelZoom = {
+  abort: () => void;
+  isRunning: () => boolean;
+  stop: () => void;
+};
+
 /**
  * Zoom pe wheel lin (chase către țintă, în jurul cursorului).
  * Rămânem în handler-ul nativ MapLibre (zoomDelta pe renderFrame), ca pan-ul
  * să meargă în același frame — fără jumpTo / RAF separat, care sacadează.
+ *
+ * Cât `isActive()` e true, MapLibre blochează `mousemove` pe hartă și ține
+ * listenerul capturing pe `document` — de aceea abortăm chase-ul când se
+ * deschide un panou, altfel overlay-ul rămâne de nefolosit.
  */
-export function enableChasingWheelZoom(map: Map) {
+export function enableChasingWheelZoom(map: Map): ChasingWheelZoom {
   const h = map.scrollZoom as unknown as ScrollZoomHook;
   if (!map.scrollZoom.isEnabled()) map.scrollZoom.enable();
 
@@ -55,6 +65,26 @@ export function enableChasingWheelZoom(map: Map) {
   };
   map.on("zoomend", syncFromMap);
   map.on("moveend", syncFromMap);
+
+  const abort = () => {
+    running = false;
+    lastTs = 0;
+    lastEvent = undefined;
+    around = undefined;
+    try {
+      targetZoom = map.getZoom();
+    } catch {
+      /* map removed */
+    }
+    h._active = false;
+    h._zooming = false;
+    origReset();
+    try {
+      h._triggerRenderFrame();
+    } catch {
+      /* handler already torn down */
+    }
+  };
 
   h.wheel = (e, point) => {
     if (!map.scrollZoom.isEnabled()) return;
@@ -120,13 +150,18 @@ export function enableChasingWheelZoom(map: Map) {
     origReset();
   };
 
-  return () => {
-    h.wheel = origWheel;
-    h.renderFrame = origRenderFrame;
-    h.reset = origReset;
-    h.isActive = origIsActive;
-    h.isZooming = origIsZooming;
-    map.off("zoomend", syncFromMap);
-    map.off("moveend", syncFromMap);
+  return {
+    abort,
+    isRunning: () => running,
+    stop: () => {
+      abort();
+      h.wheel = origWheel;
+      h.renderFrame = origRenderFrame;
+      h.reset = origReset;
+      h.isActive = origIsActive;
+      h.isZooming = origIsZooming;
+      map.off("zoomend", syncFromMap);
+      map.off("moveend", syncFromMap);
+    },
   };
 }

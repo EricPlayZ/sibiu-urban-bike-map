@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef } from "react";
 import { fadeExit, panelSpring, springExit } from "../lib/uiMotion";
-import { Bike, Building2, Bug, ChartColumn, Filter, GraduationCap, Layers, ListTree, Monitor, Moon, Pencil, Sun, Table2 } from "lucide-react";
+import { Bike, Building2, Bug, ChartColumn, Filter, GraduationCap, Layers, ListTree, Monitor, Moon, Pencil, Sun, Table2, Timer } from "lucide-react";
 import { useApp } from "../store";
 import { layersMatchPreset } from "../lib/layers";
 import { hasAnyEdit } from "../lib/space";
@@ -49,6 +49,7 @@ export function Loader() {
 
 export function MobileDock() {
   const setViewMode = useApp((s) => s.setViewMode);
+  const viewMode = useApp((s) => s.viewMode);
   const layers = useApp((s) => s.layers);
   const editMode = useApp((s) => s.editMode);
   const toggleEditAccess = useApp((s) => s.toggleEditAccess);
@@ -103,7 +104,7 @@ export function MobileDock() {
 
   return (
     <nav ref={dockRef} className="mobile-dock" aria-label="Navigare rapidă">
-      <div className="mobile-dock-row" role="group" aria-label="Mod și filtre">
+      <div className="mobile-dock-row mobile-dock-modes" role="group" aria-label="Mod și filtre">
         <button type="button" className={layersMatchPreset(layers, "space", editMode ? { ignore: ["streetsBase"] } : undefined) ? "on" : ""} onClick={() => setViewMode("space")}>
           <Bike size={18} strokeWidth={2.25} />
           <span>Spațiu</span>
@@ -115,6 +116,10 @@ export function MobileDock() {
         <button type="button" className={layersMatchPreset(layers, "schools", editMode ? { ignore: ["streetsBase"] } : undefined) ? "on" : ""} onClick={() => setViewMode("schools")}>
           <GraduationCap size={18} strokeWidth={2.25} />
           <span>Școli</span>
+        </button>
+        <button type="button" className={viewMode === "reach" ? "on" : ""} onClick={() => setViewMode("reach")} aria-pressed={viewMode === "reach"} aria-label="Acces">
+          <Timer size={18} strokeWidth={2.25} />
+          <span>Acces</span>
         </button>
         <button type="button" className={filtersOpen ? "on" : ""} onClick={toggleFilters} aria-pressed={filtersOpen}>
           <Filter size={18} strokeWidth={2.25} />

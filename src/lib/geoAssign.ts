@@ -326,6 +326,40 @@ export function neighborhoodIsActive(props: { dissolve?: unknown } | null | unde
   return d !== true && d !== "true";
 }
 
+export function neighborhoodsFromCollection(fc: GeoJSON.FeatureCollection | null | undefined): NeighborhoodPoly[] {
+  if (!fc) return [];
+  const out: NeighborhoodPoly[] = [];
+  for (const f of fc.features) {
+    const g = f.geometry;
+    if (!g || (g.type !== "Polygon" && g.type !== "MultiPolygon")) continue;
+    const p = (f.properties || {}) as { slug?: string; denumire?: string; name?: string; dissolve?: unknown };
+    if (!neighborhoodIsActive(p)) continue;
+    const slug = String(p.slug || "");
+    if (!slug) continue;
+    out.push({
+      slug,
+      name: String(p.denumire || p.name || slug).trim() || slug,
+      geometry: g,
+    });
+  }
+  return out;
+}
+
+/** Cel mai mic cartier care conține punctul (Hipodrom I în Hipodrom etc.). */
+export function neighborhoodAtPoint(neighborhoods: NeighborhoodPoly[], pt: LngLat): NeighborhoodPoly | null {
+  let best: NeighborhoodPoly | null = null;
+  let bestA = Infinity;
+  for (const n of neighborhoods) {
+    if (!pointInPolygon(pt, n.geometry)) continue;
+    const a = polygonArea(n.geometry);
+    if (a < bestA) {
+      bestA = a;
+      best = n;
+    }
+  }
+  return best;
+}
+
 export type ClippedStreetPiece = {
   neighborhood: NeighborhoodPoly;
   coordinates: LngLat[];
