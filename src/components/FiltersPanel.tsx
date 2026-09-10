@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
-import { Bike, CheckCheck, Eye, GraduationCap, Leaf, ParkingSquare, Ruler, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { Bike, CheckCheck, Eye, GraduationCap, Leaf, ParkingSquare, Ruler, Search, X } from "lucide-react";
 import { DESKTOP_MEDIA } from "../lib/breakpoints";
+import { filterByQuery } from "../lib/listSearch";
 import { panelSpring, springExit } from "../lib/uiMotion";
 import { useApp } from "../store";
 import { FadeScrim } from "./FadeScrim";
@@ -36,6 +37,14 @@ export function FiltersPanel() {
   const toggleSchool = useApp((s) => s.toggleSchool);
   const toggleAllSchools = useApp((s) => s.toggleAllSchools);
   const desktop = useIsDesktop();
+  const [nbQuery, setNbQuery] = useState("");
+  const [schoolQuery, setSchoolQuery] = useState("");
+
+  useEffect(() => {
+    if (open) return;
+    setNbQuery("");
+    setSchoolQuery("");
+  }, [open]);
 
   useLayoutEffect(() => {
     if (open) return;
@@ -54,6 +63,8 @@ export function FiltersPanel() {
   const hideEmptyOn = !layers.streetsBase;
   const illegalOnlyOn = layersMatchFocus(layers, "illegalOnly");
   const bikeOnlyOn = layersMatchFocus(layers, "bikeOnly");
+  const visibleNeighborhoods = useMemo(() => filterByQuery(neighborhoodList, nbQuery), [neighborhoodList, nbQuery]);
+  const visibleSchools = useMemo(() => filterByQuery(schoolList, schoolQuery), [schoolList, schoolQuery]);
 
   return (
     <AnimatePresence>
@@ -112,6 +123,7 @@ export function FiltersPanel() {
             </div>
 
             <div className="field-label">Cartiere</div>
+            <FilterSearch value={nbQuery} onChange={setNbQuery} placeholder="Caută cartier…" label="Caută cartier" />
             <button
               type="button"
               className={`select-all-btn ${allOn ? "on" : ""}`}
@@ -133,7 +145,7 @@ export function FiltersPanel() {
             </button>
 
             <div className="chip-wrap">
-              {neighborhoodList.map((n) => (
+              {visibleNeighborhoods.map((n) => (
                 <button
                   key={n.slug}
                   type="button"
@@ -141,12 +153,14 @@ export function FiltersPanel() {
                   onClick={() => toggleNeighborhood(n.slug)}
                   aria-pressed={selected.has(n.slug)}
                 >
-                  {n.name}
+                  <span className="chip-text">{n.name}</span>
                 </button>
               ))}
             </div>
+            {visibleNeighborhoods.length === 0 ? <p className="filter-empty">Niciun cartier nu se potrivește</p> : null}
 
             <div className="field-label">Școli</div>
+            <FilterSearch value={schoolQuery} onChange={setSchoolQuery} placeholder="Caută școală…" label="Caută școală" />
             <button
               type="button"
               className={`select-all-btn ${allSchoolsOn ? "on" : ""}`}
@@ -168,7 +182,7 @@ export function FiltersPanel() {
             </button>
 
             <div className="chip-wrap">
-              {schoolList.map((s) => (
+              {visibleSchools.map((s) => (
                 <button
                   key={s.slug}
                   type="button"
@@ -177,13 +191,46 @@ export function FiltersPanel() {
                   aria-pressed={selectedSchools.has(s.slug)}
                 >
                   <span className="chip-swatch" style={{ background: schoolColor(s.slug) }} aria-hidden />
-                  {s.name}
+                  <span className="chip-text">{s.name}</span>
                 </button>
               ))}
             </div>
+            {visibleSchools.length === 0 ? <p className="filter-empty">Nicio școală nu se potrivește</p> : null}
           </motion.aside>
         )}
     </AnimatePresence>
+  );
+}
+
+function FilterSearch({
+  value,
+  onChange,
+  placeholder,
+  label,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  label: string;
+}) {
+  return (
+    <label className="filter-search">
+      <Search size={15} strokeWidth={2.25} aria-hidden />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={label}
+        autoComplete="off"
+        spellCheck={false}
+      />
+      {value ? (
+        <button type="button" className="filter-search-clear" onClick={() => onChange("")} aria-label="Șterge căutarea">
+          <X size={14} strokeWidth={2.4} />
+        </button>
+      ) : null}
+    </label>
   );
 }
 

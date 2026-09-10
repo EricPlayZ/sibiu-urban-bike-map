@@ -1,10 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import maplibregl, { Map, GeoJSONSource, Marker, Popup } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useApp } from "../store";
 import { BASEMAPS } from "../lib/basemaps";
 import { CompassDialControl } from "../lib/northControl";
-import { enableChasingWheelZoom } from "../lib/chasingWheelZoom";
+import { enableChasingWheelZoom, type ChasingWheelZoom } from "../lib/chasingWheelZoom";
+import { isMapUiLocked, setMapHandlersEnabled } from "../lib/mapUiLock";
 import { LAYER_COLORS, type BasemapId } from "../lib/space";
 import { buildingFillColorExpr } from "../lib/buildingTypes";
 import { buildingPopupHtml, neighborhoodPopupHtml, schoolMarkerHtml, schoolPopupHtml, streetPopupHtml } from "../lib/streetPopup";
@@ -104,6 +105,7 @@ export function MapView() {
   const isochroneMinutes = useApp((s) => s.isochroneMinutes);
   const isochronePinned = useApp((s) => s.isochronePinned);
   const isochroneStatus = useApp((s) => s.isochroneStatus);
+  const mapUiLocked = useApp((s) => isMapUiLocked(s));
   const schoolMarkersRef = useRef<Marker[]>([]);
   const streetPopupRef = useRef<Popup | null>(null);
   const skipPopupCloseRef = useRef(false);
@@ -114,6 +116,8 @@ export function MapView() {
   const reachPendingRef = useRef<{ lng: number; lat: number } | null>(null);
   const lastLlRef = useRef<{ lng: number; lat: number } | null>(null);
   const lastPxRef = useRef<{ x: number; y: number } | null>(null);
+  const cursorPxRef = useRef<{ x: number; y: number } | null>(null);
+  const chaseZoomRef = useRef<ChasingWheelZoom | null>(null);
   const profileRef = useRef(isochroneProfile);
   const minutesRef = useRef(isochroneMinutes);
   const pinnedRef = useRef(isochronePinned);
@@ -237,16 +241,23 @@ export function MapView() {
       new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: false }),
       "bottom-right"
     );
-    const stopWheelZoom = enableChasingWheelZoom(map);
+    const chase = enableChasingWheelZoom(map);
+    chaseZoomRef.current = chase;
     mapRef.current = map;
     appliedBasemap.current = initial;
+    if (isMapUiLocked(useApp.getState())) {
+      chase.abort();
+      setMapHandlersEnabled(map, false);
+      containerRef.current?.classList.add("is-ui-locked");
+    }
 
     const cancel = whenStyleReady(map, () => {
       if (useApp.getState().ready) rebuildOverlays(map);
     });
 
     return () => {
-      stopWheelZoom();
+      chase.stop();
+      chaseZoomRef.current = null;
       cancel();
       stopSearchGlow(map);
       streetPopupRef.current?.remove();
@@ -256,6 +267,20 @@ export function MapView() {
       appliedBasemap.current = null;
     };
   }, []);
+
+  useLayoutEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (mapUiLocked) {
+      chaseZoomRef.current?.abort();
+      map.stop();
+      setMapHandlersEnabled(map, false);
+      containerRef.current?.classList.add("is-ui-locked");
+    } else {
+      setMapHandlersEnabled(map, true);
+      containerRef.current?.classList.remove("is-ui-locked");
+    }
+  }, [mapUiLocked]);
 
   // Date gata — montează overlay-urile pe stilul curent
   useEffect(() => {
@@ -362,6 +387,7 @@ export function MapView() {
 
     const onClick = (e: maplibregl.MapMouseEvent) => {
       const st = useApp.getState();
+      if (isMapUiLocked(st)) return;
       if (st.viewMode === "reach") {
         if (reachSkipClickRef.current) return;
         clearStreetPopup();
@@ -430,13 +456,6 @@ export function MapView() {
     const onMove = (e: maplibregl.MapMouseEvent) => {
       if (useApp.getState().viewMode === "reach") {
         map.getCanvas().style.cursor = "crosshair";
-        if (!fineHover()) return;
-        if (pinnedRef.current) return;
-        if (e.originalEvent.buttons) return;
-        if (map.dragPan.isActive()) return;
-        const marker = reachMarkerRef.current;
-        if (marker) marker.setLngLat(e.lngLat);
-        scheduleReachCompute(map, e.lngLat.lng, e.lngLat.lat, e.point);
         return;
       }
       const layers = [...STREET_HIT_LAYERS, BLD + "-fill"].filter((id) => map.getLayer(id));
@@ -444,11 +463,54 @@ export function MapView() {
       map.getCanvas().style.cursor = hits.length ? "pointer" : "";
     };
 
+    const canvasPoint = (clientX: number, clientY: number) => {
+      const rect = map.getCanvas().getBoundingClientRect();
+      return { x: clientX - rect.left - map.getCanvas().clientLeft, y: clientY - rect.top - map.getCanvas().clientTop };
+    };
+
+    const trackLiveReach = (point: { x: number; y: number }, buttons: number, compute: boolean) => {
+      if (useApp.getState().viewMode !== "reach") return;
+      if (!fineHover() || pinnedRef.current) return;
+      if (isMapUiLocked(useApp.getState())) return;
+      if (buttons) return;
+      if (map.dragPan.isActive()) return;
+      const canvas = map.getCanvas();
+      if (point.x < 0 || point.y < 0 || point.x > canvas.clientWidth || point.y > canvas.clientHeight) return;
+      cursorPxRef.current = point;
+      const ll = map.unproject([point.x, point.y]);
+      reachMarkerRef.current?.setLngLat(ll);
+      if (compute) scheduleReachCompute(map, ll.lng, ll.lat, point);
+    };
+
+    const onPointerMove = (ev: PointerEvent) => {
+      trackLiveReach(canvasPoint(ev.clientX, ev.clientY), ev.buttons, true);
+    };
+
+    const onCameraMove = () => {
+      const px = cursorPxRef.current;
+      if (!px) return;
+      trackLiveReach(px, 0, false);
+    };
+
+    const onZoomSettled = () => {
+      const px = cursorPxRef.current;
+      if (!px) return;
+      lastPxRef.current = null;
+      trackLiveReach(px, 0, true);
+    };
+
+    const canvasEl = map.getCanvasContainer();
+    canvasEl.addEventListener("pointermove", onPointerMove);
     map.on("click", onClick);
     map.on("mousemove", onMove);
+    map.on("move", onCameraMove);
+    map.on("zoomend", onZoomSettled);
     return () => {
+      canvasEl.removeEventListener("pointermove", onPointerMove);
       map.off("click", onClick);
       map.off("mousemove", onMove);
+      map.off("move", onCameraMove);
+      map.off("zoomend", onZoomSettled);
     };
   }, [ready, selectStreet, selectBuilding, viewMode]);
 

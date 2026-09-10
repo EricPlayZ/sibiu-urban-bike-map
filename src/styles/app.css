@@ -68,6 +68,13 @@ html[data-theme="dark"] .atmosphere {
   inset: 0;
   z-index: 0;
 }
+.map-root.is-ui-locked,
+.map-root.is-ui-locked .maplibregl-canvas,
+.map-root.is-ui-locked .maplibregl-canvas-container,
+.map-root.is-ui-locked .maplibregl-marker,
+.map-root.is-ui-locked .maplibregl-ctrl-bottom-right {
+  pointer-events: none !important;
+}
 .map-root.is-reach,
 .map-root.is-reach .maplibregl-canvas,
 .map-root.is-reach .maplibregl-canvas-container {
@@ -838,6 +845,7 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
   padding: 14px;
   backdrop-filter: blur(16px);
   color: var(--ink);
+  overscroll-behavior: contain;
 }
 .pop-title {
   font-family: var(--font-display);
@@ -924,6 +932,7 @@ html[data-theme="dark"] .bm-light {
   padding: 16px;
   max-height: calc(100vh - 120px);
   overflow: auto;
+  overscroll-behavior: contain;
   color: var(--ink);
 }
 .filters-panel {
@@ -931,6 +940,84 @@ html[data-theme="dark"] .bm-light {
   right: 14px;
   left: auto;
   width: min(320px, calc(100vw - 28px));
+}
+.filter-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0 10px;
+  min-height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 4%, var(--panel));
+  color: var(--ink);
+}
+.filter-search svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.filter-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 8px 0;
+  font: 500 13px var(--font-body);
+  outline: none;
+}
+.filter-search input::placeholder {
+  color: var(--muted);
+}
+.filter-search:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.filter-search-clear {
+  border: 0;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0;
+}
+.filter-search-clear:hover {
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+.filter-empty {
+  margin: 4px 0 2px;
+  color: var(--muted);
+  font: 500 12px var(--font-body);
+}
+.filters-panel .chip-wrap {
+  gap: 5px;
+}
+.filters-panel .chip {
+  max-width: calc((100% - 5px) / 2);
+  min-width: 0;
+  padding: 6px 9px;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: normal;
+  text-align: left;
+  align-items: flex-start;
+  gap: 6px;
+}
+.filters-panel .chip-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  hyphens: none;
+}
+.filters-panel .chip-swatch {
+  margin-top: 0.32em;
 }
 .stats-panel,
 .edits-panel {
