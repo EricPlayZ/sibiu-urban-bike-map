@@ -241,6 +241,13 @@ export function MapView() {
       new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: false }),
       "bottom-right"
     );
+    const attribEl = map.getContainer().querySelector(".maplibregl-ctrl-attrib");
+    const keepAttribDetailsOpen = () => {
+      // MapLibre toggles [open]; keep it on so the chip width can animate.
+      if (attribEl instanceof HTMLDetailsElement && !attribEl.open) attribEl.open = true;
+    };
+    keepAttribDetailsOpen();
+    attribEl?.addEventListener("toggle", keepAttribDetailsOpen);
     const chase = enableChasingWheelZoom(map);
     chaseZoomRef.current = chase;
     mapRef.current = map;
@@ -256,6 +263,7 @@ export function MapView() {
     });
 
     return () => {
+      attribEl?.removeEventListener("toggle", keepAttribDetailsOpen);
       chase.stop();
       chaseZoomRef.current = null;
       cancel();

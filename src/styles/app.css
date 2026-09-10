@@ -69,6 +69,9 @@ html[data-theme="dark"] .atmosphere {
   position: absolute;
   inset: 0;
   z-index: 0;
+  --map-ctrl: 44px;
+  --map-ctrl-icon: 20px;
+  --map-compass: 76px;
 }
 .map-root.is-ui-locked,
 .map-root.is-ui-locked .maplibregl-canvas,
@@ -84,59 +87,271 @@ html[data-theme="dark"] .atmosphere {
 }
 
 .maplibregl-ctrl-bottom-right {
-  bottom: 88px !important;
-  right: 10px !important;
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: var(--map-compass);
+  bottom: 14px !important;
+  right: 14px !important;
+}
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+  float: none !important;
+  clear: none !important;
+  margin: 0 !important;
+}
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl-group {
+  width: var(--map-ctrl);
+  box-sizing: content-box;
+}
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
+  align-self: flex-end;
 }
 
-/* Controale hartă mai mari (zoom, nord, geolocate) */
+/* Controale hartă — același chrome ca topbar / chip-uri */
 .maplibregl-ctrl-group {
-  border-radius: 14px !important;
+  --ubr-ico: none;
+  border-radius: 999px !important;
   overflow: hidden;
-  box-shadow: var(--shadow) !important;
+  box-shadow: var(--chip-shadow) !important;
   border: 1px solid var(--line) !important;
   background: var(--panel) !important;
+  backdrop-filter: blur(14px);
+  font-family: var(--font-body);
+}
+.maplibregl-ctrl-group:has(.maplibregl-ctrl-geolocate) {
+  border-radius: 50% !important;
 }
 .maplibregl-ctrl-group button {
-  width: 44px !important;
-  height: 44px !important;
+  width: var(--map-ctrl) !important;
+  height: var(--map-ctrl) !important;
   background-color: transparent !important;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.15s ease;
+  border-radius: 0;
+}
+.maplibregl-ctrl-group:has(> button:only-child) button {
+  border-radius: 999px;
 }
 .maplibregl-ctrl-group button + button {
   border-top: 1px solid var(--line) !important;
 }
-.maplibregl-ctrl button.maplibregl-ctrl-zoom-in,
-.maplibregl-ctrl button.maplibregl-ctrl-zoom-out {
-  background-size: 22px 22px !important;
-}
 .maplibregl-ctrl-group button:not(:disabled):hover {
-  background-color: color-mix(in srgb, var(--ink) 8%, transparent) !important;
+  background-color: color-mix(in srgb, var(--ink) 7%, transparent) !important;
+}
+.maplibregl-ctrl-group button:disabled {
+  cursor: not-allowed;
+}
+.maplibregl-ctrl-group button:focus,
+.maplibregl-ctrl-group button:focus:focus-visible,
+.maplibregl-ctrl-attrib-button:focus {
+  box-shadow: none !important;
+}
+.maplibregl-ctrl-group button:focus:first-child,
+.maplibregl-ctrl-group button:focus:last-child {
+  border-radius: 0 !important;
+}
+.maplibregl-ctrl-group button:focus:only-child {
+  border-radius: 999px !important;
 }
 
-/* Iconițe MapLibre lizibile pe temă întunecată (#333 baked în SVG) */
-html[data-theme="dark"] .maplibregl-ctrl-group {
-  background: #1a2420 !important;
-  border-color: rgba(238, 243, 239, 0.16) !important;
+.maplibregl-ctrl-zoom-in {
+  --ubr-ico: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14'/%3E%3Cpath d='M12 5v14'/%3E%3C/svg%3E");
 }
-html[data-theme="dark"] .maplibregl-ctrl-group button + button {
-  border-top-color: rgba(238, 243, 239, 0.14) !important;
+.maplibregl-ctrl-zoom-out {
+  --ubr-ico: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14'/%3E%3C/svg%3E");
 }
-html[data-theme="dark"] .maplibregl-ctrl-group button:not(:disabled):hover {
-  background-color: rgba(255, 255, 255, 0.1) !important;
-}
-html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
-  filter: invert(1) brightness(1.35) !important;
+.maplibregl-ctrl-geolocate {
+  --ubr-ico: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='2' x2='5' y1='12' y2='12'/%3E%3Cline x1='19' x2='22' y1='12' y2='12'/%3E%3Cline x1='12' x2='12' y1='2' y2='5'/%3E%3Cline x1='12' x2='12' y1='19' y2='22'/%3E%3Ccircle cx='12' cy='12' r='7'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
 }
 
-/* Busolă rotabilă */
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon,
+.maplibregl-ctrl button.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon,
+.maplibregl-ctrl button.maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon,
+.maplibregl-ctrl button.maplibregl-ctrl-geolocate .maplibregl-ctrl-icon {
+  background-image: none !important;
+  background-color: var(--ink) !important;
+  -webkit-mask: var(--ubr-ico) center / var(--map-ctrl-icon) no-repeat;
+  mask: var(--ubr-ico) center / var(--map-ctrl-icon) no-repeat;
+  filter: none !important;
+}
+
+.maplibregl-ctrl-group button.maplibregl-ctrl-geolocate-active,
+.maplibregl-ctrl-group button.maplibregl-ctrl-geolocate-background {
+  background-color: var(--accent) !important;
+}
+.maplibregl-ctrl-group button.maplibregl-ctrl-geolocate-active .maplibregl-ctrl-icon,
+.maplibregl-ctrl-group button.maplibregl-ctrl-geolocate-background .maplibregl-ctrl-icon {
+  background-color: #fff !important;
+}
+.maplibregl-ctrl-group button.maplibregl-ctrl-geolocate-active-error,
+.maplibregl-ctrl-group button.maplibregl-ctrl-geolocate-background-error {
+  background-color: var(--accent-2) !important;
+}
+.maplibregl-ctrl-group button.maplibregl-ctrl-geolocate-active-error .maplibregl-ctrl-icon,
+.maplibregl-ctrl-group button.maplibregl-ctrl-geolocate-background-error .maplibregl-ctrl-icon {
+  background-color: #fff !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .maplibregl-ctrl button.maplibregl-ctrl-geolocate-waiting .maplibregl-ctrl-icon {
+    animation: none !important;
+  }
+}
+
+.maplibregl-user-location-dot,
+.maplibregl-user-location-dot:before {
+  background-color: var(--accent);
+}
+.maplibregl-user-location-accuracy-circle {
+  background-color: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* Atribuire — pastilă. (i) rămâne în slot-ul de --map-ctrl; textul iese spre stânga. */
+@media screen {
+  .maplibregl-ctrl-attrib.maplibregl-compact {
+    position: relative;
+    background: var(--panel) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 999px !important;
+    box-shadow: var(--chip-shadow) !important;
+    backdrop-filter: blur(14px);
+    color: var(--muted) !important;
+    font-family: var(--font-body) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    box-sizing: border-box !important;
+    min-height: var(--map-ctrl) !important;
+    height: var(--map-ctrl) !important;
+    min-width: var(--map-ctrl);
+    width: var(--map-ctrl) !important;
+    max-width: min(26rem, calc(100vw - 28px));
+    padding: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    margin-left: 0 !important;
+    overflow: hidden;
+    interpolate-size: allow-keywords;
+    transition: width 0.32s cubic-bezier(0.22, 1, 0.32, 1);
+  }
+  .maplibregl-ctrl-attrib.maplibregl-compact::details-content {
+    display: contents;
+    content-visibility: visible;
+  }
+  .maplibregl-ctrl-bottom-right > .maplibregl-ctrl-attrib.maplibregl-compact,
+  .maplibregl-ctrl-top-right > .maplibregl-ctrl-attrib.maplibregl-compact {
+    direction: rtl;
+    margin-right: calc((var(--map-compass) - var(--map-ctrl)) / 2) !important;
+  }
+  .maplibregl-ctrl-attrib.maplibregl-compact-show {
+    display: block !important;
+    width: max-content !important;
+    max-width: min(26rem, calc(100vw - 28px));
+    height: var(--map-ctrl) !important;
+    min-height: var(--map-ctrl) !important;
+  }
+  .maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-inner {
+    display: inline-block !important;
+    direction: ltr;
+    unicode-bidi: isolate;
+    color: var(--muted);
+    white-space: nowrap;
+    vertical-align: top;
+    margin: 0 !important;
+    padding: 0 var(--map-ctrl) 0 14px !important;
+    line-height: calc(var(--map-ctrl) - 2px) !important;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      opacity 0.2s ease,
+      visibility 0s linear 0.32s;
+  }
+  .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition:
+      opacity 0.22s ease 0.04s,
+      visibility 0s linear 0s;
+  }
+  .maplibregl-ctrl-bottom-left > .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner,
+  .maplibregl-ctrl-top-left > .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner {
+    padding: 0 14px 0 var(--map-ctrl) !important;
+  }
+  .maplibregl-ctrl-attrib-button {
+    appearance: none;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    position: absolute !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: auto !important;
+    left: auto !important;
+    width: var(--map-ctrl) !important;
+    height: var(--map-ctrl) !important;
+    border-radius: 999px !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    transform: none !important;
+    z-index: 1;
+    -webkit-tap-highlight-color: transparent;
+    display: grid !important;
+    place-items: center;
+    list-style: none;
+    cursor: pointer;
+  }
+  .maplibregl-ctrl-bottom-left .maplibregl-ctrl-attrib-button,
+  .maplibregl-ctrl-top-left .maplibregl-ctrl-attrib-button {
+    right: auto !important;
+    left: 0 !important;
+  }
+  .maplibregl-ctrl-attrib-button::-webkit-details-marker,
+  .maplibregl-ctrl-attrib-button::marker {
+    display: none;
+    content: "";
+  }
+  .maplibregl-ctrl-attrib-button::before {
+    content: "";
+    width: 16px;
+    height: 16px;
+    background-color: var(--ink);
+    -webkit-mask: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='%23000' fill-rule='evenodd' d='M4 10a6 6 0 1 0 12 0 6 6 0 1 0-12 0m5-3a1 1 0 1 0 2 0 1 1 0 1 0-2 0m0 3a1 1 0 1 1 2 0v3a1 1 0 1 1-2 0'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='%23000' fill-rule='evenodd' d='M4 10a6 6 0 1 0 12 0 6 6 0 1 0-12 0m5-3a1 1 0 1 0 2 0 1 1 0 1 0-2 0m0 3a1 1 0 1 1 2 0v3a1 1 0 1 1-2 0'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .maplibregl-ctrl-attrib-button:hover {
+    background-color: color-mix(in srgb, var(--ink) 7%, transparent) !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .maplibregl-ctrl-attrib.maplibregl-compact,
+  .maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-inner,
+  .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner {
+    transition: none;
+  }
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--accent) !important;
+  text-decoration: none;
+}
+.maplibregl-ctrl-attrib a:hover {
+  color: var(--accent) !important;
+  text-decoration: underline;
+}
+
+/* Busolă rotabilă — păstrăm dial-ul mare, același material ca restul chrome-ului */
 .ubr-compass-wrap {
-  margin: 0 0 10px !important;
+  width: var(--map-compass);
+  height: var(--map-compass);
   background: transparent !important;
   box-shadow: none !important;
   border: 0 !important;
 }
 .ubr-compass-dial {
-  width: 76px;
-  height: 76px;
+  width: var(--map-compass);
+  height: var(--map-compass);
   border-radius: 50%;
   position: relative;
   touch-action: none;
@@ -144,8 +359,18 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
   user-select: none;
   background: var(--panel);
   border: 1px solid var(--line);
-  box-shadow: var(--shadow);
+  box-shadow: var(--chip-shadow);
   backdrop-filter: blur(14px);
+  font-family: var(--font-body);
+}
+.ubr-compass-dial::after {
+  content: "";
+  position: absolute;
+  inset: 17px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  pointer-events: none;
+  z-index: 1;
 }
 .ubr-compass-dial.dragging {
   cursor: grabbing;
@@ -162,16 +387,28 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
 }
 .ubr-compass-tick {
   position: absolute;
-  font: 700 11px var(--font-body);
+  font: 700 10px var(--font-body);
   color: var(--muted);
+  letter-spacing: 0.04em;
   line-height: 1;
 }
 .ubr-compass-tick-n {
-  top: 6px;
+  top: 7px;
   left: 50%;
   transform: translateX(-50%);
   color: #e03131;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.ubr-compass-tick-n::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -5px;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-bottom: 4px solid #e03131;
+  transform: translateX(-50%);
 }
 .ubr-compass-tick-e {
   right: 7px;
@@ -179,7 +416,7 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
   transform: translateY(-50%);
 }
 .ubr-compass-tick-s {
-  bottom: 6px;
+  bottom: 7px;
   left: 50%;
   transform: translateX(-50%);
 }
@@ -193,16 +430,18 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--ink) 6%, var(--panel));
   color: var(--accent);
-  font: 800 14px var(--font-body);
+  font: 800 13px var(--font-body);
   cursor: pointer;
   z-index: 2;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--chip-shadow);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .ubr-compass-hub:hover {
   background: var(--accent);
@@ -396,7 +635,10 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
 .mobile-dock button:focus-visible,
 .search-hit:focus-visible,
 .search-clear:focus-visible,
-.icon-x:focus-visible {
+.icon-x:focus-visible,
+.maplibregl-ctrl-group button:focus-visible,
+.maplibregl-ctrl-attrib-button:focus-visible,
+.ubr-compass-hub:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -2331,13 +2573,25 @@ html[data-theme="dark"] .bldg-chip {
 /* Chrome breakpoint — MUST match src/lib/breakpoints.ts
    DESKTOP_MIN_WIDTH_PX = 900, MOBILE_MAX_WIDTH_PX = 899. */
 @media (max-width: 899px) {
-  .ubr-compass-dial {
-    width: 88px;
-    height: 88px;
+  .map-root {
+    --map-ctrl: 48px;
+    --map-ctrl-icon: 22px;
+    --map-compass: 88px;
+  }
+  .ubr-compass-dial::after {
+    inset: 20px;
   }
   .ubr-compass-hub {
-    width: 38px;
-    height: 38px;
+    width: 42px;
+    height: 42px;
+    font-size: 14px;
+  }
+  .ubr-compass-tick {
+    font-size: 11px;
+  }
+  .ubr-compass-tick-n {
+    font-size: 12px;
+    top: 8px;
   }
   .top-actions,
   .topbar .seg {
@@ -2470,6 +2724,7 @@ html[data-theme="dark"] .bldg-chip {
   }
   .maplibregl-ctrl-bottom-right {
     bottom: calc(var(--mobile-dock-top, 120px) + 10px) !important;
+    right: 10px !important;
   }
   .toast {
     bottom: calc(var(--mobile-dock-top, 120px) + 10px);
