@@ -64,6 +64,17 @@ export const VIEW_PRESETS: Record<ViewMode, LayerVisibility> = {
     buildings: false,
     neighborhoods: true,
   },
+  reach: {
+    streetsBase: true,
+    bike: false,
+    bikeDoor: false,
+    reserved: false,
+    illegal: false,
+    schoolAssign: false,
+    schoolMarkers: false,
+    buildings: false,
+    neighborhoods: false,
+  },
 };
 
 /** Focalizări = preseturi pe straturi (ca Spațiu / Clădiri / Școli). */

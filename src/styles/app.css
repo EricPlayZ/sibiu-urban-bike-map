@@ -68,6 +68,11 @@ html[data-theme="dark"] .atmosphere {
   inset: 0;
   z-index: 0;
 }
+.map-root.is-reach,
+.map-root.is-reach .maplibregl-canvas,
+.map-root.is-reach .maplibregl-canvas-container {
+  cursor: crosshair;
+}
 
 .maplibregl-ctrl-bottom-right {
   bottom: 88px !important;
@@ -383,6 +388,443 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
   border-color: #ff6a00;
 }
 
+.reach-hud {
+  position: absolute;
+  z-index: 6;
+  top: 78px;
+  left: 14px;
+  width: min(336px, calc(100vw - 28px));
+  max-height: calc(100dvh - 96px);
+  overflow: auto;
+  padding: 12px 13px 13px;
+  border-radius: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+  color: var(--ink);
+}
+.reach-hud.is-below-edit {
+  top: 132px;
+}
+.reach-hud-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.reach-hud-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: 700 15px var(--font-display);
+}
+.reach-hud-hint {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font: 600 12px var(--font-body);
+  line-height: 1.35;
+}
+.reach-live-btn {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 5%, var(--panel));
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 5px 9px;
+  font: 700 11px var(--font-body);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.reach-live-btn.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--panel);
+}
+.reach-hud-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.reach-mode {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 4%, var(--panel));
+  border-radius: 12px;
+  padding: 8px 8px 9px;
+  cursor: pointer;
+  color: var(--muted);
+  font: 700 11px var(--font-body);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.reach-mode-main {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.reach-mode-speed {
+  display: block;
+  white-space: nowrap;
+  font: 800 18px / 1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+.reach-mode-speed small {
+  margin-left: 3px;
+  font: 700 10px / 1 var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.78;
+}
+.reach-mode.bike:not(.on) .reach-mode-speed {
+  color: #00c853;
+}
+.reach-mode.walk:not(.on) .reach-mode-speed {
+  color: #ff6d00;
+}
+.reach-mode.bike.on {
+  background: #00c853;
+  border-color: #00c853;
+  color: #01331c;
+}
+.reach-mode.walk.on {
+  background: #ff6d00;
+  border-color: #ff6d00;
+  color: #fff;
+}
+.reach-times {
+  display: flex;
+  padding: 3px;
+  gap: 2px;
+  background: color-mix(in srgb, var(--ink) 6%, var(--panel));
+  border-radius: 999px;
+  margin-bottom: 10px;
+}
+.reach-times button {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 7px 6px;
+  border-radius: 999px;
+  font: 700 12px var(--font-body);
+  cursor: pointer;
+  color: var(--muted);
+}
+.reach-hud.bike .reach-times button.on {
+  background: #00c853;
+  color: #01331c;
+}
+.reach-hud.walk .reach-times button.on {
+  background: #ff6d00;
+  color: #fff;
+}
+.reach-hud-stats {
+  margin: 0;
+  padding: 10px 10px 11px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ink) 5.5%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--ink) 8%, var(--line));
+}
+.reach-stat-loc {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.reach-stat-loc svg {
+  margin-top: 11px;
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+.reach-hud.walk .reach-stat-loc svg {
+  color: #ff6d00;
+}
+.reach-stat-kicker {
+  display: block;
+  font: 700 10px var(--font-body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 1px;
+}
+.reach-stat-loc strong {
+  display: block;
+  font: 700 14px var(--font-display);
+  line-height: 1.2;
+}
+.reach-stat-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.reach-stat-metric {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 7px;
+  align-items: center;
+  padding: 8px 9px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.reach-stat-metric svg {
+  grid-row: 1 / span 2;
+  color: var(--muted);
+}
+.reach-stat-metric b {
+  font: 800 16px / 1.1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.reach-stat-metric span {
+  grid-column: 2;
+  font: 700 10px var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.reach-stat-block + .reach-stat-block {
+  margin-top: 8px;
+}
+.reach-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+  font: 700 11px var(--font-body);
+  color: var(--ink);
+}
+.reach-stat-label svg {
+  color: var(--muted);
+}
+.reach-stat-label em {
+  margin-left: auto;
+  font: 800 10px var(--font-body);
+  font-style: normal;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.reach-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.reach-chip {
+  max-width: 100%;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 7%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--ink) 8%, var(--line));
+  color: var(--ink);
+  font: 600 11px / 1.25 var(--font-body);
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: break-word;
+  hyphens: none;
+}
+.reach-stat-empty {
+  margin: 0;
+  color: var(--muted);
+  font: 600 12px var(--font-body);
+  line-height: 1.35;
+}
+
+.reach-pin {
+  width: 28px;
+  height: 28px;
+  position: relative;
+  overflow: visible;
+  pointer-events: auto;
+  cursor: grab;
+}
+.reach-pin.is-live {
+  pointer-events: none;
+  cursor: crosshair;
+  opacity: 0.92;
+}
+.reach-pin.is-pinned {
+  cursor: pointer;
+}
+.reach-pin-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  animation: reach-pulse 1.6s ease-out infinite;
+  pointer-events: none;
+}
+.reach-pin.is-walk .reach-pin-pulse {
+  background: color-mix(in srgb, #ff6d00 32%, transparent);
+}
+.reach-pin-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff, var(--accent) 46%, #083d26);
+  border: 2px solid #fff;
+  box-shadow: 0 4px 12px rgba(8, 28, 18, 0.4);
+  pointer-events: none;
+}
+.reach-pin.is-walk .reach-pin-dot {
+  background: radial-gradient(circle at 35% 30%, #fff, #ff6d00 46%, #4a1600);
+}
+.reach-pin-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  z-index: 2;
+  pointer-events: none;
+  white-space: nowrap;
+  padding: 6px 10px 7px;
+  border-radius: 999px;
+  background: #101412;
+  color: #f4fff8;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 22px rgba(6, 16, 12, 0.42);
+  font: 700 11px var(--font-body);
+  letter-spacing: 0.01em;
+}
+.reach-pin-hint::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  background: #101412;
+  border-right: 1px solid rgba(255, 255, 255, 0.16);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  transform: rotate(45deg);
+}
+.reach-pin-hint-touch {
+  display: none;
+}
+@media (hover: none), (pointer: coarse) {
+  .reach-pin-hint-desk {
+    display: none;
+  }
+  .reach-pin-hint-touch {
+    display: inline;
+  }
+}
+.reach-pin-card {
+  position: absolute;
+  left: 22px;
+  top: 22px;
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+  width: max-content;
+  max-width: 272px;
+  padding: 9px 10px 10px;
+  border-radius: 14px;
+  background: color-mix(in srgb, #101412 88%, transparent);
+  color: #f4fff8;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 28px rgba(6, 16, 12, 0.38);
+  backdrop-filter: blur(12px);
+}
+.reach-pin-hint[hidden],
+.reach-pin-card[hidden] {
+  display: none !important;
+}
+.reach-pin-here {
+  font: 700 12px var(--font-display);
+  line-height: 1.2;
+}
+.reach-pin-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-top: 7px;
+}
+.reach-pin-metric {
+  padding: 5px 7px 6px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.reach-pin-metric b {
+  display: block;
+  font: 800 13px / 1.1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+.reach-pin-metric.is-speed b {
+  font-size: 15px;
+}
+.reach-pin.is-bike .reach-pin-metric.is-speed b {
+  color: #00c853;
+}
+.reach-pin.is-walk .reach-pin-metric.is-speed b {
+  color: #ffab40;
+}
+.reach-pin-metric span {
+  display: block;
+  margin-top: 1px;
+  font: 700 9px var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(244, 255, 248, 0.62);
+}
+.reach-pin-block {
+  margin-top: 8px;
+}
+.reach-pin-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+  font: 700 10px var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(244, 255, 248, 0.72);
+}
+.reach-pin-label em {
+  margin-left: auto;
+  font: 800 10px var(--font-body);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: rgba(244, 255, 248, 0.88);
+}
+.reach-pin-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  overflow: visible;
+}
+.reach-pin-chips .reach-chip {
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #f4fff8;
+  white-space: normal;
+}
+.reach-pin-empty {
+  margin-top: 5px;
+  font: 600 11px var(--font-body);
+  color: rgba(244, 255, 248, 0.7);
+}
+@keyframes reach-pulse {
+  0% { transform: scale(0.55); opacity: 0.7; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
 .popover {
   position: absolute;
   z-index: 12;
@@ -696,6 +1138,11 @@ html[data-theme="dark"] .bm-light {
 @media (prefers-reduced-motion: reduce) {
   .map-popup {
     animation: none;
+  }
+  .reach-pin-pulse {
+    animation: none;
+    opacity: 0.35;
+    transform: scale(1);
   }
 }
 .map-popup .mp-media {
@@ -1779,6 +2226,17 @@ html[data-theme="dark"] .bldg-chip {
     bottom: calc(var(--mobile-dock-top, 120px) + 10px);
     z-index: 7;
   }
+  .reach-hud {
+    top: 68px;
+    left: 10px;
+    width: min(300px, calc(100vw - 20px));
+    padding: 10px 11px 11px;
+    max-height: min(52vh, 420px);
+    overflow: auto;
+  }
+  .reach-hud.is-below-edit {
+    top: 118px;
+  }
   .map-legend {
     width: min(228px, 62vw);
     max-width: min(228px, 62vw);
@@ -1809,6 +2267,13 @@ html[data-theme="dark"] .bldg-chip {
     border-radius: 22px;
     box-shadow: var(--shadow);
     backdrop-filter: blur(18px);
+  }
+  .mobile-dock-modes {
+    grid-template-columns: repeat(5, 1fr);
+  }
+  .mobile-dock-modes button {
+    padding: 8px 1px;
+    font-size: 9px;
   }
   .mobile-dock-tools {
     display: flex;

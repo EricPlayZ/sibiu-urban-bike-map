@@ -49,6 +49,15 @@ import { assignFlagOffsets } from "./lib/streetPopup";
 import { VIEW_PRESETS, FOCUS_PRESETS, type FocusId, type LayerVisibility, type MapLayerId } from "./lib/layers";
 import { runImportPipeline, type ImportReport } from "./lib/importPipeline";
 import type { SearchFocus, SearchHit } from "./lib/mapSearch";
+import {
+  ensureIsochroneEngine,
+  lastReachOrigin,
+  setLastIsochroneFeatures,
+  setLastReachOrigin,
+  type IsochroneMinutes,
+  type IsochroneProfile,
+} from "./lib/isochrone";
+import { emptyIsochroneStats, type IsochroneStats } from "./lib/isochroneStats";
 
 const LEGEND_OPEN_KEY = "ubr_legend_open";
 
@@ -126,6 +135,19 @@ type AppState = {
   teamName: string | null;
   teamLoginOpen: boolean;
   entityLock: { held: boolean; holder: string | null };
+  isochroneOrigin: { lng: number; lat: number } | null;
+  isochroneProfile: IsochroneProfile;
+  isochroneMinutes: IsochroneMinutes;
+  isochronePinned: boolean;
+  isochroneStatus: "idle" | "ready" | "error";
+  isochroneStats: IsochroneStats;
+  setIsochroneOrigin: (lng: number, lat: number, pinned?: boolean) => void;
+  setIsochronePinned: (pinned: boolean) => void;
+  setIsochroneProfile: (profile: IsochroneProfile) => void;
+  setIsochroneMinutes: (minutes: IsochroneMinutes) => void;
+  setIsochroneStats: (stats: IsochroneStats) => void;
+  clearIsochrone: () => void;
+  warmIsochrone: () => Promise<void>;
 
   init: () => Promise<void>;
   teamLogin: (password: string, name: string) => Promise<void>;
@@ -331,6 +353,12 @@ export const useApp = create<AppState>((set, get) => ({
   teamName: null,
   teamLoginOpen: false,
   entityLock: { held: true, holder: null },
+  isochroneOrigin: null,
+  isochroneProfile: "bike",
+  isochroneMinutes: 10,
+  isochronePinned: false,
+  isochroneStatus: "idle",
+  isochroneStats: emptyIsochroneStats(),
 
   showToast: (msg) => {
     set({ toast: msg });
@@ -516,7 +544,60 @@ export const useApp = create<AppState>((set, get) => ({
   setViewMode: (v) => {
     const layers = { ...VIEW_PRESETS[v] };
     if (get().editMode) layers.streetsBase = true;
+    if (v === "reach") {
+      set({
+        viewMode: v,
+        layers,
+        sheetOpen: false,
+        selected: null,
+        filtersOpen: false,
+        statsOpen: false,
+        searchOpen: false,
+        searchFocus: null,
+      });
+      void get().warmIsochrone();
+      return;
+    }
     set({ viewMode: v, layers });
+  },
+  warmIsochrone: async () => {
+    try {
+      await ensureIsochroneEngine();
+    } catch {
+      get().showToast("Nu am putut încărca rețeaua de acces.");
+    }
+  },
+  setIsochroneOrigin: (lng, lat, pinned = true) => {
+    setLastReachOrigin({ lng, lat });
+    set({
+      isochroneOrigin: { lng, lat },
+      isochronePinned: pinned,
+      isochroneStatus: "ready",
+    });
+  },
+  setIsochronePinned: (pinned) => {
+    if (pinned) {
+      const ll = lastReachOrigin() || get().isochroneOrigin;
+      set({
+        isochronePinned: true,
+        ...(ll ? { isochroneOrigin: ll, isochroneStatus: "ready" as const } : {}),
+      });
+      return;
+    }
+    set({ isochronePinned: false });
+  },
+  setIsochroneProfile: (profile) => set({ isochroneProfile: profile }),
+  setIsochroneMinutes: (minutes) => set({ isochroneMinutes: minutes }),
+  setIsochroneStats: (stats) => set({ isochroneStats: stats }),
+  clearIsochrone: () => {
+    setLastIsochroneFeatures({ type: "FeatureCollection", features: [] });
+    setLastReachOrigin(null);
+    set({
+      isochroneOrigin: null,
+      isochronePinned: false,
+      isochroneStatus: "idle",
+      isochroneStats: emptyIsochroneStats(),
+    });
   },
   setLayer: (id, on) => {
     // În editare, baza rămâne mereu activă ca să vezi străzile needitate
