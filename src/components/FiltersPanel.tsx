@@ -152,6 +152,7 @@ export function FiltersPanel() {
                   className={`chip ${selected.has(n.slug) ? "on" : ""}`}
                   onClick={() => toggleNeighborhood(n.slug)}
                   aria-pressed={selected.has(n.slug)}
+                  title={n.name}
                 >
                   <span className="chip-text">{n.name}</span>
                 </button>
@@ -186,9 +187,10 @@ export function FiltersPanel() {
                 <button
                   key={s.slug}
                   type="button"
-                  className={`chip ${selectedSchools.has(s.slug) ? "on" : ""}`}
+                  className={`chip chip-school ${selectedSchools.has(s.slug) ? "on" : ""}`}
                   onClick={() => toggleSchool(s.slug)}
                   aria-pressed={selectedSchools.has(s.slug)}
+                  title={s.name}
                 >
                   <span className="chip-swatch" style={{ background: schoolColor(s.slug) }} aria-hidden />
                   <span className="chip-text">{s.name}</span>
