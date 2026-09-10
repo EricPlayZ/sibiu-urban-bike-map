@@ -1001,6 +1001,11 @@ html[data-theme="dark"] .bm-light {
   flex-wrap: wrap;
   gap: 6px;
 }
+.filters-panel .chip-wrap-schools {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: 6px;
+}
 .filters-panel .chip {
   flex: 0 0 auto;
   width: auto;
@@ -1017,14 +1022,28 @@ html[data-theme="dark"] .bm-light {
   overflow: hidden;
 }
 .filters-panel .chip-school {
+  width: 100%;
+  min-height: 32px;
   border-radius: 10px;
-  padding: 4px 8px;
+  padding: 5px 7px;
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: normal;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 5px;
 }
 .filters-panel .chip-text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.filters-panel .chip-school .chip-text {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  overflow-wrap: break-word;
 }
 .stats-panel,
 .edits-panel {

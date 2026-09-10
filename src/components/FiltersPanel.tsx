@@ -7,6 +7,7 @@ import { panelSpring, springExit } from "../lib/uiMotion";
 import { useApp } from "../store";
 import { FadeScrim } from "./FadeScrim";
 import { schoolColor } from "../lib/schoolColors";
+import { shortSchoolName } from "../lib/isochroneStats";
 import { LAYER_META, layersMatchFocus } from "../lib/layers";
 
 function useIsDesktop() {
@@ -182,7 +183,7 @@ export function FiltersPanel() {
               </span>
             </button>
 
-            <div className="chip-wrap">
+            <div className="chip-wrap chip-wrap-schools">
               {visibleSchools.map((s) => (
                 <button
                   key={s.slug}
@@ -190,10 +191,11 @@ export function FiltersPanel() {
                   className={`chip chip-school ${selectedSchools.has(s.slug) ? "on" : ""}`}
                   onClick={() => toggleSchool(s.slug)}
                   aria-pressed={selectedSchools.has(s.slug)}
+                  aria-label={s.name}
                   title={s.name}
                 >
                   <span className="chip-swatch" style={{ background: schoolColor(s.slug) }} aria-hidden />
-                  <span className="chip-text">{s.name}</span>
+                  <span className="chip-text">{shortSchoolName(s.name)}</span>
                 </button>
               ))}
             </div>
