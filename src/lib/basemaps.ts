@@ -4,49 +4,26 @@ import type { BasemapId } from "./space";
 /** Glyphs MapLibre — necesare pentru etichetele de cartier pe stilurile raster. */
 const GLYPHS = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
 
+/**
+ * Light/dark used to be CARTO raster tiles (light_all / dark_all). Those now
+ * return a watermarked “API KEY REQUIRED” image unless you register a key at
+ * carto.com/basemaps/apikey. OpenFreeMap Positron/Dark are the same cartography
+ * and need no key.
+ */
 export const BASEMAPS: Record<BasemapId, { label: string; style: string | StyleSpecification }> = {
   light: {
     label: "Deschis",
-    style: {
-      version: 8,
-      glyphs: GLYPHS,
-      sources: {
-        carto: {
-          type: "raster",
-          tiles: [
-            "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png",
-            "https://cartodb-basemaps-b.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png",
-          ],
-          tileSize: 256,
-          attribution: "© OSM © CARTO",
-        },
-      },
-      layers: [{ id: "carto", type: "raster", source: "carto" }],
-    },
+    style: "https://tiles.openfreemap.org/styles/positron",
   },
   dark: {
     label: "Întunecat",
-    style: {
-      version: 8,
-      glyphs: GLYPHS,
-      sources: {
-        carto: {
-          type: "raster",
-          tiles: [
-            "https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png",
-            "https://cartodb-basemaps-b.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png",
-          ],
-          tileSize: 256,
-          attribution: "© OSM © CARTO",
-        },
-      },
-      layers: [{ id: "carto", type: "raster", source: "carto" }],
-    },
+    style: "https://tiles.openfreemap.org/styles/dark",
   },
   satellite: {
     label: "Satelit",
     style: {
       version: 8,
+      name: "satellite",
       glyphs: GLYPHS,
       sources: {
         esri: {
