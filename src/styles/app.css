@@ -8,6 +8,8 @@ html[data-theme="light"] {
   --accent: #0f7a4c;
   --accent-2: #c45c26;
   --shadow: 0 18px 50px rgba(16, 28, 22, 0.18);
+  --chip-shadow: 0 1px 2px rgba(16, 28, 22, 0.08), 0 3px 8px rgba(16, 28, 22, 0.08);
+  --chip-shadow-on: 0 1px 2px color-mix(in srgb, var(--accent) 22%, transparent), 0 4px 10px color-mix(in srgb, var(--accent) 20%, transparent);
   --radius: 22px;
   --app-bg: #e8ebe6;
   --loader-from: #0f1c17;
@@ -27,6 +29,8 @@ html[data-theme="dark"] {
   --accent: #3dbe7c;
   --accent-2: #e08a4f;
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  --chip-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.32);
+  --chip-shadow-on: 0 1px 2px color-mix(in srgb, var(--accent) 40%, transparent), 0 6px 16px color-mix(in srgb, var(--accent) 28%, transparent);
   --app-bg: #0c1410;
   --loader-from: #070b09;
   --loader-to: #152019;
@@ -50,10 +54,8 @@ body,
   position: absolute;
   inset: 0;
   z-index: 1;
-  background:
-    radial-gradient(1000px 500px at 10% -10%, rgba(15, 122, 76, 0.16), transparent 60%),
-    radial-gradient(800px 420px at 100% 0%, rgba(196, 92, 38, 0.12), transparent 55%);
-  mix-blend-mode: soft-light;
+  /* No wash on light UI — a top-right radial reads as a dirty halo under the tools on a white basemap. */
+  background: none;
 }
 html[data-theme="dark"] .atmosphere {
   background:
@@ -294,7 +296,7 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
 .top-actions {
   display: flex;
   flex-wrap: nowrap;
-  gap: 6px;
+  gap: 2px;
   margin-left: auto;
   /* Shrink + scroll on one row — never wrap under Filtre/Import panels. */
   flex: 0 1 auto;
@@ -304,9 +306,42 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
 }
 .top-actions::-webkit-scrollbar {
   display: none;
+}
+.top-actions .chip-btn {
+  box-shadow: none;
+  border: 0;
+  background: transparent;
+}
+.top-actions .chip-btn:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.top-actions .chip-btn.on {
+  background: var(--ink);
+  border-color: transparent;
+  color: var(--panel);
+  box-shadow: none;
+}
+.top-actions .chip-btn.on svg {
+  color: inherit;
+  stroke: currentColor;
+}
+.top-actions .chip-btn.edit.on {
+  background: var(--accent-2);
+  color: #fff;
+  box-shadow: none;
+}
+.top-actions .chip-btn.on:hover {
+  background: var(--ink);
+}
+.top-actions .chip-btn.edit.on:hover {
+  background: var(--accent-2);
 }
 .chip-btn {
   border: 1px solid var(--line);
@@ -315,8 +350,7 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
   border-radius: 999px;
   font: 600 13px var(--font-body);
   cursor: pointer;
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(14px);
+  box-shadow: var(--chip-shadow);
   color: var(--ink);
   display: inline-flex;
   align-items: center;
@@ -328,7 +362,7 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: var(--chip-shadow-on);
 }
 .chip-btn.on svg {
   color: #fff;
@@ -337,7 +371,8 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
 .chip-btn.edit.on {
   background: var(--accent-2);
   border-color: var(--accent-2);
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--accent-2) 35%, transparent);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent-2) 28%, transparent),
+    0 4px 10px color-mix(in srgb, var(--accent-2) 22%, transparent);
 }
 .chip-btn.ghost {
   background: color-mix(in srgb, var(--panel) 78%, transparent);
