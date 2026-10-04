@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { neighborhoodAtPoint, neighborhoodsFromCollection, type NeighborhoodPoly } from "./geoAssign";
-import { describeReach, formatKm2, geomAreaKm2, shortSchoolName } from "./isochroneStats";
+import { describeReach, emptyIsochroneStats, formatKm2, formatStreetKm, geomAreaKm2, reachStatSections, shortSchoolName } from "./isochroneStats";
 
 const square = (lng: number, lat: number, d: number): GeoJSON.Polygon => ({
   type: "Polygon",
@@ -104,6 +104,36 @@ describe("isochrone stats", () => {
     expect(stats.schoolCount).toBe(6);
     expect(stats.schoolNames).toHaveLength(6);
     expect(stats.schoolNames).toEqual(["Școala 1", "Școala 2", "Școala 3", "Școala 4", "Școala 5", "Școala 6"]);
+  });
+
+  it("builds collapsed access sections from real summaries", () => {
+    expect(reachStatSections(emptyIsochroneStats())).toEqual([]);
+    const one = {
+      ...emptyIsochroneStats(),
+      reachable: true,
+      areaKm2: 1.8,
+      streetKm: 4.2,
+      reached: ["Centru"],
+      schoolCount: 1,
+      schoolNames: ["Școala 1"],
+    };
+    expect(reachStatSections(one)).toEqual([
+      { id: "coverage", title: "Suprafață", summary: formatKm2(1.8) },
+      { id: "streets", title: "Străzi", summary: formatStreetKm(4.2) },
+      { id: "neighborhoods", title: "Cartiere", summary: "1 cartier" },
+      { id: "schools", title: "Școli", summary: "1 școală" },
+    ]);
+    const many = {
+      ...emptyIsochroneStats(),
+      reachable: true,
+      reached: ["A", "B"],
+      schoolCount: 0,
+    };
+    const sections = reachStatSections(many);
+    expect(sections.map((s) => s.id)).toEqual(["coverage", "streets", "neighborhoods", "schools"]);
+    expect(sections.find((s) => s.id === "neighborhoods")?.summary).toBe("2 cartiere");
+    expect(sections.find((s) => s.id === "schools")?.summary).toBe("0 școli");
+    expect(sections.find((s) => s.id === "coverage")?.summary).toBe(formatKm2(0));
   });
 
   it("picks the smallest containing neighbourhood", () => {

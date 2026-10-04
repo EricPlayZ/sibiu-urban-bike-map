@@ -1,14 +1,15 @@
-import { FormEvent, useEffect, useLayoutEffect, useMemo, useState, type CSSProperties } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Home, Building2, Building, HelpCircle, Pencil, X, Ruler, Road, Car, Footprints, ParkingSquare, Bike, Trees, TriangleAlert, Save, Trash2 } from "lucide-react";
+import { Home, Building2, Building, Store, Scissors, Undo2, Check, Pencil, X, Ruler, Road, Car, Footprints, ParkingSquare, Bike, Trees, TriangleAlert, Save, Trash2 } from "lucide-react";
 import { useApp } from "../store";
 import { isDesktopViewport } from "../lib/breakpoints";
 import { panelSpring, springExit } from "../lib/uiMotion";
 import { streetSchoolSlugs } from "../lib/schoolCatchment";
 import { BIKE_DOOR_LABEL, BIKE_SAFE_LABEL } from "../lib/layers";
 import { FORM_FIELDS, pct, spaceShares, featureHasIllegalParking, featureHasReservedParking, resolveStreetMeasurement, streetBikeLaneStatus, streetHasBikeLane, type Measurement } from "../lib/space";
-import { BUILDING_CLASSIFIED_TYPES, buildingTypeMeta, normalizeBuildingType, type BuildingTypeMeta } from "../lib/buildingTypes";
+import { BUILDING_CLASSIFIED_TYPES, buildingTypeMeta, coerceBuildingType, type BuildingTypeMeta } from "../lib/buildingTypes";
 import { FadeScrim } from "./FadeScrim";
+import { Tip } from "./Tip";
 
 const FIELD_ICONS: Partial<Record<keyof Measurement, typeof Ruler>> = {
     length_m: Ruler,
@@ -25,6 +26,12 @@ const FIELD_ICONS: Partial<Record<keyof Measurement, typeof Ruler>> = {
     free_sidewalk1_m: Footprints,
     free_sidewalk2_m: Footprints,
 };
+
+function measurementDraftDiffers(a: Measurement, b: Measurement) {
+    if ((a.name || "") !== (b.name || "")) return true;
+    if (Boolean(a.illgl_park) !== Boolean(b.illgl_park)) return true;
+    return FORM_FIELDS.some((f) => (a[f.key] ?? null) !== (b[f.key] ?? null));
+}
 
 function schoolName(slug: string, schools: GeoJSON.FeatureCollection | null) {
     if (!schools || !slug) return slug;
@@ -45,6 +52,12 @@ export function DetailSheet() {
     const closeSheet = useApp((s) => s.closeSheet);
     const saveStreet = useApp((s) => s.saveStreet);
     const setBuildingType = useApp((s) => s.setBuildingType);
+    const startSplitTool = useApp((s) => s.startSplitTool);
+    const [dirty, setDirty] = useState(false);
+    const dirtyRef = useRef(false);
+    dirtyRef.current = dirty;
+    const selKind = selected?.kind ?? null;
+    const selId = selected?.id ?? null;
 
     const existing = useMemo(() => {
         if (selected?.kind !== "street") return undefined;
@@ -53,40 +66,41 @@ export function DetailSheet() {
     const hasLocalEdit = selected?.kind === "street" ? Boolean(measurements[selected.id]) : false;
     const desktop = isDesktopViewport();
     const canEdit = Boolean(editMode && teamAuthed && entityLock.held);
+    // Lock-ul depinde DOAR de (tip, id). Înainte depindea de obiectul `selected`, care se recreează la
+    // fiecare eveniment live (altcineva salvează) → lock eliberat și re-cerut în buclă, cu curse între ele.
     useEffect(() => {
-        if (!open || !selected || !editMode || !teamAuthed) return;
-        const kind = selected.kind;
-        const id = selected.id;
-        void refreshEntityLock(kind, id);
-        const t = window.setInterval(() => void refreshEntityLock(kind, id), 20_000);
+        if (!open || !selKind || !selId || !editMode || !teamAuthed) return;
+        void refreshEntityLock(selKind, selId);
+        const t = window.setInterval(() => void refreshEntityLock(selKind, selId), 20_000);
         return () => {
             window.clearInterval(t);
-            void dropEntityLock(kind, id);
+            void dropEntityLock(selKind, selId);
         };
-    }, [open, selected, editMode, teamAuthed, refreshEntityLock, dropEntityLock]);
+    }, [open, selKind, selId, editMode, teamAuthed, refreshEntityLock, dropEntityLock]);
 
-    // Scrimul se demontează imediat; panoul rămâne pe exit — fără hit-testing în timpul animației.
-    useLayoutEffect(() => {
-        if (open) return;
-        document.querySelectorAll<HTMLElement>(".sheet").forEach((el) => {
-            el.style.pointerEvents = "none";
-            el.setAttribute("aria-hidden", "true");
-        });
-    }, [open]);
+    // Modificările nesalvate aparțin unei singure entități.
+    useEffect(() => {
+        setDirty(false);
+    }, [selKind, selId, open]);
+
+    const requestClose = useCallback(() => {
+        if (dirtyRef.current && !window.confirm("Ai modificări nesalvate. Renunți la ele?")) return;
+        closeSheet();
+    }, [closeSheet]);
 
     return (
         <AnimatePresence>
             {open && selected && (
-                <FadeScrim key="sheet-scrim" className="sheet-scrim" onClick={closeSheet} label="Închide panoul" />
+                <FadeScrim key="sheet-scrim" className="sheet-scrim" onClick={requestClose} label="Închide panoul" />
             )}
             {open && selected && (
                     <motion.div
                         key="sheet"
                         className="sheet"
-                        initial={desktop ? { opacity: 0, y: 16 } : { y: "110%" }}
-                        animate={desktop ? { opacity: 1, y: 0 } : { y: 0 }}
+                        initial={desktop ? { opacity: 0, y: 16, pointerEvents: "auto" } : { y: "110%", pointerEvents: "auto" }}
+                        animate={desktop ? { opacity: 1, y: 0, pointerEvents: "auto" } : { y: 0, pointerEvents: "auto" }}
                         exit={springExit(desktop ? { opacity: 0, y: 12 } : { y: "110%" })}
-                        transition={panelSpring}
+                        transition={{ ...panelSpring, pointerEvents: { duration: 0 } }}
                         role="dialog"
                         aria-modal="true"
                     >
@@ -99,8 +113,14 @@ export function DetailSheet() {
                                     name={selected.name}
                                     initial={existing}
                                     hasLocalEdit={hasLocalEdit}
-                                    onSave={(data) => void saveStreet(selected.id, data)}
-                                    onClose={closeSheet}
+                                    onSave={(data) => saveStreet(selected.id, data)}
+                                    onDirtyChange={setDirty}
+                                    onSplit={() => {
+                                        if (dirtyRef.current && !window.confirm("Ai modificări nesalvate. Renunți la ele și segmentezi?")) return;
+                                        setDirty(false);
+                                        void startSplitTool(selected.id);
+                                    }}
+                                    onClose={requestClose}
                                 />
                             ) : (
                                 <StreetPublic
@@ -113,7 +133,17 @@ export function DetailSheet() {
                                 />
                             )
                         ) : (
-                            <BuildingEditor id={selected.id} type={selected.type} onPick={(id, t) => void setBuildingType(id, t)} onClose={closeSheet} editMode={canEdit} lockHolder={!entityLock.held ? entityLock.holder : null} />
+                            <BuildingEditor
+                                key={selected.id}
+                                id={selected.id}
+                                type={selected.type}
+                                onApply={(id, t) => setBuildingType(id, t)}
+                                onDirtyChange={setDirty}
+                                onClose={requestClose}
+                                onCloseNow={closeSheet}
+                                editMode={canEdit}
+                                lockHolder={!entityLock.held ? entityLock.holder : null}
+                            />
                         )}
                     </motion.div>
             )}
@@ -134,9 +164,11 @@ function StreetPublic({ name, m, props, onClose, onEditHint, lockHolder }: { nam
         <div className="sheet-body">
             <div className="sheet-head">
                 <h3>{name}</h3>
-                <button type="button" className="icon-x" onClick={onClose} aria-label="Închide">
-                    <X size={18} strokeWidth={2.25} />
-                </button>
+                <Tip text="Închide">
+                    <button type="button" className="icon-x" onClick={onClose} aria-label="Închide">
+                        <X size={18} strokeWidth={2.25} />
+                    </button>
+                </Tip>
             </div>
 
             <ul className="flag-list">
@@ -178,20 +210,56 @@ function StreetEditor({
     initial,
     hasLocalEdit,
     onSave,
+    onDirtyChange,
+    onSplit,
     onClose,
 }: {
     id: string;
     name: string;
     initial?: Measurement;
     hasLocalEdit: boolean;
-    onSave: (d: Measurement) => void;
+    onSave: (d: Measurement) => Promise<boolean>;
+    onDirtyChange: (dirty: boolean) => void;
+    onSplit: () => void;
     onClose: () => void;
 }) {
-    const [draft, setDraft] = useState<Measurement>(() => ({ name, ...initial, source: "local" }));
+    const baseline = useRef<Measurement>({ name, ...initial, source: "local" });
+    const [draft, setDraft] = useState<Measurement>(() => ({ ...baseline.current }));
+    const [saving, setSaving] = useState(false);
+    const dirty = useMemo(() => measurementDraftDiffers(draft, baseline.current), [draft]);
+
+    useEffect(() => {
+        onDirtyChange(dirty);
+        return () => onDirtyChange(false);
+    }, [dirty, onDirtyChange]);
+
+    const apply = async () => {
+        if (saving) return;
+        setSaving(true);
+        try {
+            const ok = await onSave({ ...draft, name: draft.name || name, source: "local" });
+            // Salvat → panoul se închide; eșec (lock/conflict/rețea) → rămâi în editor cu modificările tale.
+            if (ok) {
+                onDirtyChange(false);
+                useApp.getState().closeSheet();
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
 
     const onSubmit = (e: FormEvent) => {
         e.preventDefault();
-        onSave({ ...draft, name: draft.name || name, source: "local" });
+        void apply();
+    };
+
+    const discard = () => {
+        if (dirty) {
+            // „Renunță” = aruncă modificările și rămâi în panou, cu valorile de la deschidere.
+            setDraft({ ...baseline.current });
+            return;
+        }
+        onClose();
     };
 
     const fromSeed = (initial?.source === "seed" || initial?.source === "csv") && !hasLocalEdit;
@@ -205,9 +273,11 @@ function StreetEditor({
                     </span>
                     {name}
                 </h3>
-                <button type="button" className="icon-x" onClick={onClose} aria-label="Închide">
-                    <X size={18} strokeWidth={2.25} />
-                </button>
+                <Tip text="Închide">
+                    <button type="button" className="icon-x" onClick={onClose} aria-label="Închide">
+                        <X size={18} strokeWidth={2.25} />
+                    </button>
+                </Tip>
             </div>
             <p className="sub">
                 {fromSeed
@@ -262,28 +332,36 @@ function StreetEditor({
                     <input type="checkbox" checked={!!draft.illgl_park} onChange={(e) => setDraft({ ...draft, illgl_park: e.target.checked })} />
                 </label>
 
-                <div className="actions">
-                    <button type="submit" className="btn primary">
-                        <Save size={16} strokeWidth={2.25} aria-hidden />
-                        Salvează
+                <div className="actions sheet-actions">
+                    <button type="submit" className="btn primary" disabled={saving || !dirty}>
+                        <Check size={16} strokeWidth={2.25} aria-hidden />
+                        {saving ? "Se salvează…" : "Aplică"}
                     </button>
-                    <button type="button" className="btn" onClick={onClose}>
-                        Închide
+                    <button type="button" className="btn" onClick={discard} disabled={saving}>
+                        <Undo2 size={16} strokeWidth={2.25} aria-hidden />
+                        {dirty ? "Renunță" : "Închide"}
                     </button>
                 </div>
+                <button type="button" className="btn wide" onClick={onSplit} disabled={saving}>
+                    <Scissors size={15} strokeWidth={2.25} aria-hidden />
+                    Segmentează strada în bucăți
+                </button>
                 {hasLocalEdit && (
-                    <button
-                        type="button"
-                        className="btn danger-ghost wide"
-                        onClick={() => {
-                            if (window.confirm(`Ștergi editarea locală pentru „${name}”?`)) {
-                                useApp.getState().deleteStreetEdit(id);
-                            }
-                        }}
-                    >
-                        <Trash2 size={15} strokeWidth={2.25} aria-hidden />
-                        Șterge editarea locală
-                    </button>
+                    <>
+                        <button
+                            type="button"
+                            className="btn danger-ghost wide"
+                            onClick={() => {
+                                if (window.confirm(`Ștergi măsurătorile salvate pentru „${name}”?`)) {
+                                    useApp.getState().deleteStreetEdit(id);
+                                }
+                            }}
+                        >
+                            <Trash2 size={15} strokeWidth={2.25} aria-hidden />
+                            Șterge măsurătorile salvate
+                        </button>
+                        <p className="sub street-delete-note">Nu scoate segmentarea străzii. Segmentarea se șterge din lista de editări.</p>
+                    </>
                 )}
             </form>
         </div>
@@ -295,21 +373,65 @@ const BUILDING_ICONS: Record<BuildingTypeMeta["icon"], typeof Home> = {
     homes: Building2,
     building: Building2,
     tower: Building,
-    help: HelpCircle,
+    store: Store,
 };
 
-function BuildingEditor({ id, type, onPick, onClose, editMode, lockHolder }: { id: string; type: string; onPick: (id: string, t: string) => void; onClose: () => void; editMode: boolean; lockHolder?: string | null }) {
-    const currentType = normalizeBuildingType(type) ?? "necunoscut";
-    const current = buildingTypeMeta(currentType);
+function BuildingEditor({
+    id,
+    type,
+    onApply,
+    onDirtyChange,
+    onClose,
+    onCloseNow,
+    editMode,
+    lockHolder,
+}: {
+    id: string;
+    type: string;
+    onApply: (id: string, t: string) => Promise<boolean>;
+    onDirtyChange: (dirty: boolean) => void;
+    onClose: () => void;
+    onCloseNow: () => void;
+    editMode: boolean;
+    lockHolder?: string | null;
+}) {
+    const currentType = coerceBuildingType(type);
+    // Alegerea e doar „propusă” până apeși Aplică; Renunță o aruncă.
+    const [pending, setPending] = useState<ReturnType<typeof coerceBuildingType> | null>(null);
+    const [saving, setSaving] = useState(false);
+    const dirty = editMode && pending != null && pending !== currentType;
+    const shown = dirty && pending ? pending : currentType;
+    const current = buildingTypeMeta(shown);
     const CurrentIcon = BUILDING_ICONS[current.icon];
+
+    useEffect(() => {
+        onDirtyChange(dirty);
+        return () => onDirtyChange(false);
+    }, [dirty, onDirtyChange]);
+
+    const apply = async () => {
+        if (saving || !dirty || !pending) return;
+        setSaving(true);
+        try {
+            const ok = await onApply(id, pending);
+            if (ok) {
+                onDirtyChange(false);
+                onCloseNow();
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
 
     return (
         <div className="sheet-body bldg-sheet">
             <div className="sheet-head">
                 <h3>Clădire</h3>
-                <button type="button" className="icon-x" onClick={onClose} aria-label="Închide">
-                    <X size={18} strokeWidth={2.25} />
-                </button>
+                <Tip text="Închide">
+                    <button type="button" className="icon-x" onClick={onClose} aria-label="Închide">
+                        <X size={18} strokeWidth={2.25} />
+                    </button>
+                </Tip>
             </div>
 
             <div className="bldg-summary">
@@ -331,11 +453,9 @@ function BuildingEditor({ id, type, onPick, onClose, editMode, lockHolder }: { i
                                 <button
                                     key={t}
                                     type="button"
-                                    className={currentType === t ? "on" : ""}
-                                    onClick={() => {
-                                        onPick(id, t);
-                                        onClose();
-                                    }}
+                                    className={shown === t ? "on" : ""}
+                                    disabled={saving}
+                                    onClick={() => setPending(t)}
                                 >
                                     <span className="bgrid-ico" style={{ color: item.color, background: `color-mix(in srgb, ${item.color} 18%, transparent)` }}>
                                         <Icon size={18} strokeWidth={2.25} aria-hidden />
@@ -344,6 +464,16 @@ function BuildingEditor({ id, type, onPick, onClose, editMode, lockHolder }: { i
                                 </button>
                             );
                         })}
+                    </div>
+                    <div className="actions sheet-actions">
+                        <button type="button" className="btn primary" onClick={() => void apply()} disabled={!dirty || saving}>
+                            <Check size={16} strokeWidth={2.25} aria-hidden />
+                            {saving ? "Se salvează…" : "Aplică"}
+                        </button>
+                        <button type="button" className="btn" onClick={() => (dirty ? setPending(null) : onClose())} disabled={saving}>
+                            <Undo2 size={16} strokeWidth={2.25} aria-hidden />
+                            {dirty ? "Renunță" : "Închide"}
+                        </button>
                     </div>
                 </>
             ) : (

@@ -10,6 +10,8 @@ export type SearchHit = {
   label: string;
   hint: string;
   features: GeoJSON.Feature[];
+  /** Fly and highlight without opening the map popup. */
+  quiet?: boolean;
 };
 
 export type SearchFocus = {

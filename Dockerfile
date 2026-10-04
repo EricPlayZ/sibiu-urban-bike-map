@@ -20,6 +20,7 @@ COPY --from=build /app/server-dist ./
 COPY --from=build /app/public/data/local-edits.json /seed/local-edits.json
 COPY --from=build /app/public/data/street-fixes.json /seed/street-fixes.json
 COPY --from=build /app/public/data/building-edits.json /seed/building-edits.json
+COPY --from=build /app/public/data/street-splits.json /seed/street-splits.json
 COPY server/docker-entrypoint.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh && mkdir -p /data && chown node:node /data /seed
 

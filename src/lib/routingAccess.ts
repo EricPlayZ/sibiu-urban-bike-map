@@ -14,6 +14,8 @@ export type OsmWayTags = {
 
 const DENY = new Set(["no", "private", "military", "discouraged"]);
 const ALLOW = new Set(["yes", "designated", "permissive", "official"]);
+/** `access=private` rămâne pe rețea: aleile numite (ex. Aleea Principală) sunt așa în OSM și apar pe hartă. */
+const ACCESS_BLOCK = new Set(["no", "military", "discouraged"]);
 
 const WALK_BAN = new Set([
   "motorway",
@@ -53,11 +55,15 @@ function taggedDeny(v: string | undefined) {
   return Boolean(v) && (DENY.has(v!) || v === "dismount");
 }
 
+function accessBlocks(v: string | undefined) {
+  return Boolean(v) && ACCESS_BLOCK.has(v!);
+}
+
 export function walkAllowed(t: OsmWayTags): boolean {
   if (taggedDeny(t.foot)) return false;
   if (WALK_BAN.has(t.highway) && !taggedAllow(t.foot)) return false;
   if ((t.highway === "trunk" || t.highway === "trunk_link") && !taggedAllow(t.foot)) return false;
-  if (t.access && DENY.has(t.access) && !taggedAllow(t.foot)) return false;
+  if (accessBlocks(t.access) && !taggedAllow(t.foot)) return false;
   return true;
 }
 
@@ -65,7 +71,7 @@ export function bikeAllowed(t: OsmWayTags): boolean {
   if (taggedDeny(t.bicycle)) return false;
   if (BIKE_BAN.has(t.highway) && !taggedAllow(t.bicycle)) return false;
   if (BIKE_NEED_TAG.has(t.highway) && !taggedAllow(t.bicycle)) return false;
-  if (t.access && DENY.has(t.access) && !taggedAllow(t.bicycle)) return false;
+  if (accessBlocks(t.access) && !taggedAllow(t.bicycle)) return false;
   return true;
 }
 

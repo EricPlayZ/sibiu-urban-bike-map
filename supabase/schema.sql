@@ -20,7 +20,7 @@ create table if not exists neighborhoods (
 
 create table if not exists building_types (
   building_id text primary key,
-  type text not null check (type in ('casa', 'bloc', 'altceva', 'necunoscut')),
+  type text not null check (type in ('casa', 'casa_multi', 'bloc_4', 'bloc_10', 'public_business')),
   updated_at timestamptz default now()
 );
 

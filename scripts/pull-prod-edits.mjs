@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.resolve(__dirname, "../public/data");
 const ORIGIN = process.env.UBR_PROD_ORIGIN || "https://mapthecity.aeanet.dev";
 
-const FILES = ["local-edits.json", "building-edits.json", "street-fixes.json"];
+const FILES = ["local-edits.json", "building-edits.json", "street-fixes.json", "street-splits.json"];
 
 async function download(name) {
   const url = `${ORIGIN.replace(/\/$/, "")}/data/${name}`;

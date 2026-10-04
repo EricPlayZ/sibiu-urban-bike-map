@@ -7,7 +7,12 @@ import { CompassDialControl } from "../lib/northControl";
 import { enableChasingWheelZoom, type ChasingWheelZoom } from "../lib/chasingWheelZoom";
 import { isMapUiLocked, setMapHandlersEnabled } from "../lib/mapUiLock";
 import { LAYER_COLORS, type BasemapId } from "../lib/space";
-import { buildingFillColorExpr } from "../lib/buildingTypes";
+import { buildingFillColorExpr, buildingTypeFilterExpr, coerceBuildingType } from "../lib/buildingTypes";
+import { buildingLayerFilter } from "../lib/mapFilters";
+import { neighborhoodInfo } from "../lib/neighborhoodInfo";
+import { computePieces, featureLines, projectOnLines, type SplitPoint } from "../lib/streetSplits";
+import { buildingFeatureForFocus, lockTargetLabel, streetFeatureForFocus } from "../lib/editFocus";
+import { getPresence, subscribePresence } from "../lib/livePresence";
 import { buildingPopupHtml, neighborhoodPopupHtml, schoolMarkerHtml, schoolPopupHtml, streetPopupHtml } from "../lib/streetPopup";
 import {
   addSearchHighlightLayers,
@@ -25,8 +30,6 @@ import { isMobileViewport } from "../lib/breakpoints";
 import { hitRadiusPx, queryClosestFeature, queryRenderedNear } from "../lib/mapHit";
 import { explodeSchoolColorFeatures, schoolColor } from "../lib/schoolColors";
 import {
-  BIKE_KMH,
-  WALK_KMH,
   computeIsochrones,
   ensureIsochroneEngine,
   lastIsochroneFeatures,
@@ -34,7 +37,7 @@ import {
   setLastReachOrigin,
   type IsochroneEngine,
 } from "../lib/isochrone";
-import { describeReach, emptyIsochroneStats, formatStatNumber, shortSchoolName, type IsochroneStats } from "../lib/isochroneStats";
+import { describeReach, emptyIsochroneStats } from "../lib/isochroneStats";
 
 const SRC = "streets";
 const SCH = "school-stripes";
@@ -42,6 +45,9 @@ const NB = "nb";
 const NB_LABELS = "nb-labels";
 const BLD = "bld";
 const ISO = "isochrone";
+const SPLIT = "split-preview";
+const PRESENCE_LOCK = "presence-lock";
+const SPLIT_COLORS = ["#d6336c", "#1c7ed6", "#f08c00", "#2f9e44", "#7048e8", "#0c8599"];
 
 const STREET_HIT_LAYERS = [
   "streets-illegal",
@@ -87,6 +93,7 @@ export function MapView() {
   const appliedBasemap = useRef<BasemapId | null>(null);
 
   const ready = useApp((s) => s.ready);
+  const streets = useApp((s) => s.streets);
   const basemap = useApp((s) => s.basemap);
   const viewMode = useApp((s) => s.viewMode);
   const neighborhoods = useApp((s) => s.neighborhoods);
@@ -108,7 +115,13 @@ export function MapView() {
   const mapUiLocked = useApp((s) => isMapUiLocked(s));
   const schoolMarkersRef = useRef<Marker[]>([]);
   const streetPopupRef = useRef<Popup | null>(null);
+  const popupTipCleanupRef = useRef<(() => void) | null>(null);
   const skipPopupCloseRef = useRef(false);
+  const splitPreviewMarkerRef = useRef<Marker | null>(null);
+  const splitDragRef = useRef<{ index: number; pointerId: number } | null>(null);
+  const splitSkipMapClickRef = useRef(false);
+  const splitTouchPlacedRef = useRef(false);
+  const presenceMarkersRef = useRef<Marker[]>([]);
   const reachMarkerRef = useRef<Marker | null>(null);
   const reachSkipClickRef = useRef(false);
   const reachEngineRef = useRef<IsochroneEngine | null>(null);
@@ -168,6 +181,8 @@ export function MapView() {
   };
 
   const clearStreetPopup = () => {
+    popupTipCleanupRef.current?.();
+    popupTipCleanupRef.current = null;
     skipPopupCloseRef.current = true;
     streetPopupRef.current?.remove();
     streetPopupRef.current = null;
@@ -182,9 +197,43 @@ export function MapView() {
     });
   };
 
+  /** Butoanele din popup („Arată doar…” / „Ascunde…”) și pliurile: evenimentele nu ajung la hartă. */
+  const onPopupClick = (ev: MouseEvent) => {
+    ev.stopPropagation();
+    const btn = (ev.target as HTMLElement | null)?.closest<HTMLElement>("[data-ubr-act]");
+    if (!btn) return;
+    const act = btn.dataset.ubrAct;
+    const id = btn.dataset.ubrId || "";
+    const st = useApp.getState();
+    if (!id) return;
+    if (act === "only-nb") {
+      st.showOnlyNeighborhood(id);
+      st.showToast("Arăt doar acest cartier — schimbi din Filtre");
+    } else if (act === "hide-nb") {
+      st.hideNeighborhood(id);
+      st.showToast("Cartier ascuns — îl readuci din Filtre");
+    } else if (act === "only-school") {
+      st.showOnlySchool(id);
+      st.showToast("Arăt doar această școală — schimbi din Filtre sau Legendă");
+    } else if (act === "hide-school") {
+      st.hideSchool(id);
+      st.showToast("Școală ascunsă — o readuci din Filtre sau Legendă");
+    } else if (act === "only-bldg") {
+      st.showOnlyBuildingType(id);
+      st.showToast("Arăt doar acest tip de clădire");
+    } else if (act === "hide-bldg") {
+      const cur = st.filters.buildingTypes;
+      st.setFilter("buildingTypes", cur.filter((t) => t !== id));
+      st.showToast("Tip ascuns — îl readuci din Legendă");
+    } else {
+      return;
+    }
+    clearStreetPopup();
+  };
+
   const openMapPopup = (map: Map, lngLat: maplibregl.LngLatLike, html: string, offset: number) => {
     clearStreetPopup();
-    streetPopupRef.current = new maplibregl.Popup({
+    const popup = new maplibregl.Popup({
       closeOnClick: true,
       focusAfterOpen: false,
       maxWidth: isMobileViewport() ? "280px" : "320px",
@@ -194,10 +243,40 @@ export function MapView() {
       .setLngLat(lngLat)
       .setHTML(html)
       .addTo(map);
-    bindPopupClose(streetPopupRef.current);
+    streetPopupRef.current = popup;
+    const el = popup.getElement();
+    el.addEventListener("click", onPopupClick);
+    const stopToMap = (ev: Event) => ev.stopPropagation();
+    el.addEventListener("pointerdown", stopToMap);
+    el.addEventListener("mousedown", stopToMap);
+    popupTipCleanupRef.current = bindPopupTooltips(el);
+    bindPopupClose(popup);
+  };
+
+  const openNeighborhoodPopup = async (map: Map, lngLat: maplibregl.LngLatLike, slug: string, fallbackName: string) => {
+    let st = useApp.getState();
+    if (!st.buildings) {
+      try {
+        await st.ensureBuildings();
+      } catch {
+        /* secțiunea de clădiri rămâne „neîncărcate” */
+      }
+      st = useApp.getState();
+    }
+    const info = neighborhoodInfo({
+      slug,
+      streets: st.streets,
+      neighborhoods: st.neighborhoods,
+      schools: st.schools,
+      buildings: st.buildings,
+      measurements: st.measurements,
+      seedMeasurements: st.seedMeasurements,
+    });
+    openMapPopup(map, lngLat, neighborhoodPopupHtml(info?.name || fallbackName, info, slug), 12);
   };
 
   const showSearchPopup = (map: Map, hit: SearchHit) => {
+    if (hit.quiet) return;
     const st = useApp.getState();
     if (st.editMode) return;
     const anchor = hitAnchor(hit);
@@ -214,6 +293,11 @@ export function MapView() {
       const selected = new Set(st.filters.neighborhoods);
       html = schoolPopupHtml((feat?.properties || {}) as Record<string, unknown>, st.streets, selected);
     } else {
+      const slug = String((hit.features[0]?.properties as { slug?: string } | undefined)?.slug || "");
+      if (slug) {
+        void openNeighborhoodPopup(map, anchor, slug, hit.label);
+        return;
+      }
       html = neighborhoodPopupHtml(hit.label);
     }
 
@@ -237,6 +321,8 @@ export function MapView() {
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false, visualizePitch: false }), "bottom-right");
     map.addControl(new CompassDialControl(), "bottom-right");
+    const compassEl = map.getContainer().querySelector<HTMLElement>(".ubr-compass-wrap");
+    const unbindCompassTips = compassEl ? bindPopupTooltips(compassEl) : null;
     map.addControl(
       new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: false }),
       "bottom-right"
@@ -263,6 +349,7 @@ export function MapView() {
     });
 
     return () => {
+      unbindCompassTips?.();
       attribEl?.removeEventListener("toggle", keepAttribDetailsOpen);
       chase.stop();
       chaseZoomRef.current = null;
@@ -355,6 +442,7 @@ export function MapView() {
     if (!map || !ready || !layers.schoolMarkers || !schools) return;
 
     const selectedSchools = new Set(useApp.getState().filters.schools);
+    const tipCleanups: Array<() => void> = [];
 
     for (const f of schools.features) {
       if (!f.geometry || f.geometry.type !== "Point") continue;
@@ -367,8 +455,9 @@ export function MapView() {
       el.className = "school-marker";
       const focusId = useApp.getState().searchFocus?.hit.id;
       if (focusId === `school:${slug}`) el.classList.add("is-search-hit");
-      el.title = name;
       el.setAttribute("aria-label", name);
+      el.dataset.tip = name;
+      tipCleanups.push(bindPopupTooltips(el));
       el.innerHTML = schoolMarkerHtml(name, schoolColor(slug));
       el.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -384,6 +473,7 @@ export function MapView() {
     }
 
     return () => {
+      tipCleanups.forEach((cleanup) => cleanup());
       schoolMarkersRef.current.forEach((m) => m.remove());
       schoolMarkersRef.current = [];
     };
@@ -396,6 +486,27 @@ export function MapView() {
     const onClick = (e: maplibregl.MapMouseEvent) => {
       const st = useApp.getState();
       if (isMapUiLocked(st)) return;
+      if (st.splitTool) {
+        if (splitSkipMapClickRef.current || splitDragRef.current) {
+          splitSkipMapClickRef.current = false;
+          return;
+        }
+        if (splitTouchPlacedRef.current) {
+          splitTouchPlacedRef.current = false;
+          return;
+        }
+        // Segmentare: click lângă stradă = punct nou de tăiere (proiectat exact pe linie).
+        const tool = st.splitTool;
+        const lines = featureLines(tool.geometry);
+        const p: SplitPoint = [e.lngLat.lng, e.lngLat.lat];
+        const hit = projectSplitPoint(map, lines, p, hitRadiusPx(e.originalEvent));
+        if (!hit) {
+          st.showToast("Atinge mai aproape de strada tăiată");
+          return;
+        }
+        st.addSplitPoint(hit.point);
+        return;
+      }
       if (st.viewMode === "reach") {
         if (reachSkipClickRef.current) return;
         clearStreetPopup();
@@ -421,7 +532,7 @@ export function MapView() {
         if (bhits[0]) {
           const p = bhits[0].properties || {};
           const bid = String(p.bid);
-          const btype = String(p.ubr_type || "necunoscut");
+          const btype = coerceBuildingType(p.ubr_type);
           if (!st.editMode) {
             st.closeSheet();
             dismissSearchHighlight();
@@ -437,8 +548,19 @@ export function MapView() {
       const layers = STREET_HIT_LAYERS.filter((id) => map.getLayer(id));
       const streetHit = queryClosestFeature(map, e.point, layers, radius);
       if (!streetHit) {
+        // Un click care doar închide un popup deschis nu deschide altul.
+        const hadPopup = Boolean(streetPopupRef.current);
         clearStreetPopup();
         dismissSearchHighlight();
+        // Click pe un cartier (nu pe stradă): informații despre cartier, fără să schimbe vreun filtru.
+        if (!hadPopup && !st.editMode && map.getLayer("nb-fill")) {
+          const nbHit = map.queryRenderedFeatures(e.point, { layers: ["nb-fill"] })[0];
+          const nbProps = (nbHit?.properties || {}) as { slug?: string; denumire?: string; name?: string };
+          if (nbProps.slug) {
+            st.closeSheet();
+            void openNeighborhoodPopup(map, e.lngLat, String(nbProps.slug), String(nbProps.denumire || nbProps.name || nbProps.slug));
+          }
+        }
         return;
       }
       const hitProps = (streetHit.properties || {}) as Record<string, unknown>;
@@ -462,7 +584,7 @@ export function MapView() {
     };
 
     const onMove = (e: maplibregl.MapMouseEvent) => {
-      if (useApp.getState().viewMode === "reach") {
+      if (useApp.getState().viewMode === "reach" || useApp.getState().splitTool) {
         map.getCanvas().style.cursor = "crosshair";
         return;
       }
@@ -534,6 +656,276 @@ export function MapView() {
     containerRef.current?.classList.toggle("is-search-focus", Boolean(searchFocus));
   }, [searchFocus]);
 
+  // Segmentare: bucățile colorate + punctele de tăiere (click pe punct = îl scoate).
+  const splitTool = useApp((s) => s.splitTool);
+  const pipelineStreetsRaw = useApp((s) => s.pipelineStreetsRaw);
+  const splitMarkersRef = useRef<Marker[]>([]);
+  useEffect(() => {
+    const map = mapRef.current;
+    splitMarkersRef.current.forEach((m) => m.remove());
+    splitMarkersRef.current = [];
+    splitPreviewMarkerRef.current?.remove();
+    splitPreviewMarkerRef.current = null;
+    splitDragRef.current = null;
+    if (!map || !ready) return;
+    const cancel = whenStyleReady(map, () => {
+      ensureSplitLayers(map);
+      pushSplitData(map);
+      applyLayerVisibility(map);
+    });
+    if (!splitTool) {
+      whenStyleReady(map, () => {
+        pushSplitData(map);
+        applyLayerVisibility(map);
+      });
+      map.getCanvas().style.cursor = "";
+      return () => {
+        cancel();
+      };
+    }
+
+    const previewEl = document.createElement("div");
+    previewEl.className = "split-marker is-preview";
+    previewEl.setAttribute("aria-hidden", "true");
+    const previewMarker = new maplibregl.Marker({ element: previewEl, anchor: "center" }).setLngLat(splitTool.points[0] || map.getCenter()).addTo(map);
+    previewEl.style.display = "none";
+    splitPreviewMarkerRef.current = previewMarker;
+
+    const showPreviewAt = (point: SplitPoint | null) => {
+      if (!point || splitDragRef.current) {
+        previewEl.style.display = "none";
+        return;
+      }
+      previewEl.style.display = "";
+      previewMarker.setLngLat(point);
+    };
+
+    const onSplitMove = (ev: maplibregl.MapMouseEvent) => {
+      if (splitDragRef.current) return;
+      const tool = useApp.getState().splitTool;
+      if (!tool) return;
+      const lines = featureLines(tool.geometry);
+      const p: SplitPoint = [ev.lngLat.lng, ev.lngLat.lat];
+      const hit = projectSplitPoint(map, lines, p, hitRadiusPx(ev.originalEvent));
+      showPreviewAt(hit?.point ?? null);
+    };
+
+    const onSplitPointerUp = (ev: PointerEvent) => {
+      if (ev.pointerType !== "touch" || splitDragRef.current) return;
+      const tool = useApp.getState().splitTool;
+      if (!tool) return;
+      const rect = map.getCanvas().getBoundingClientRect();
+      const x = ev.clientX - rect.left - map.getCanvas().clientLeft;
+      const y = ev.clientY - rect.top - map.getCanvas().clientTop;
+      const ll = map.unproject([x, y]);
+      const lines = featureLines(tool.geometry);
+      const hit = projectSplitPoint(map, lines, [ll.lng, ll.lat], hitRadiusPx(ev));
+      if (!hit || previewEl.style.display === "none") return;
+      useApp.getState().addSplitPoint(hit.point);
+      splitTouchPlacedRef.current = true;
+      showPreviewAt(null);
+    };
+
+    map.on("mousemove", onSplitMove);
+    map.getCanvas().addEventListener("pointerup", onSplitPointerUp);
+
+    splitTool.points.forEach((pt, index) => {
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = "split-marker";
+      el.setAttribute("aria-label", "Trage punctul de-a lungul străzii. Click ca să-l scoți");
+      let pendingDrag: { pointerId: number; x: number; y: number } | null = null;
+      let dragged = false;
+      let pausedPan = false;
+      const stopMapGesture = (ev: Event) => ev.stopPropagation();
+      const resumePan = () => {
+        if (!pausedPan) return;
+        pausedPan = false;
+        map.dragPan.enable();
+      };
+      el.addEventListener("mousedown", stopMapGesture);
+      el.addEventListener("touchstart", stopMapGesture, { passive: true });
+      el.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        splitSkipMapClickRef.current = true;
+        if (dragged || splitDragRef.current) {
+          dragged = false;
+          return;
+        }
+        useApp.getState().removeSplitPoint(index);
+      });
+      el.addEventListener("pointerdown", (ev) => {
+        if (ev.pointerType === "mouse" && ev.button !== 0) return;
+        ev.stopPropagation();
+        splitSkipMapClickRef.current = true;
+        dragged = false;
+        pendingDrag = { pointerId: ev.pointerId, x: ev.clientX, y: ev.clientY };
+        showPreviewAt(null);
+        el.setPointerCapture(ev.pointerId);
+      });
+      el.addEventListener("pointermove", (ev) => {
+        const tool = useApp.getState().splitTool;
+        if (!tool || !pendingDrag || pendingDrag.pointerId !== ev.pointerId) return;
+        if (!splitDragRef.current) {
+          const dx = ev.clientX - pendingDrag.x;
+          const dy = ev.clientY - pendingDrag.y;
+          if (dx * dx + dy * dy < 16) return;
+          dragged = true;
+          splitDragRef.current = { index, pointerId: ev.pointerId };
+          if (map.dragPan.isEnabled()) {
+            map.dragPan.disable();
+            pausedPan = true;
+          }
+        }
+        const drag = splitDragRef.current;
+        if (!drag || drag.index !== index || drag.pointerId !== ev.pointerId) return;
+        ev.stopPropagation();
+        const rect = map.getCanvas().getBoundingClientRect();
+        const x = ev.clientX - rect.left - map.getCanvas().clientLeft;
+        const y = ev.clientY - rect.top - map.getCanvas().clientTop;
+        const ll = map.unproject([x, y]);
+        const lines = featureLines(tool.geometry);
+        const hit = projectSplitPoint(map, lines, [ll.lng, ll.lat], 48);
+        if (hit) marker.setLngLat(hit.point);
+      });
+      el.addEventListener("pointerup", (ev) => {
+        if (pendingDrag?.pointerId === ev.pointerId) pendingDrag = null;
+        const drag = splitDragRef.current;
+        resumePan();
+        if (!drag || drag.index !== index || drag.pointerId !== ev.pointerId) {
+          window.setTimeout(() => {
+            dragged = false;
+            splitSkipMapClickRef.current = false;
+          }, 0);
+          return;
+        }
+        ev.stopPropagation();
+        try {
+          el.releasePointerCapture(ev.pointerId);
+        } catch {
+          /* ignore */
+        }
+        const tool = useApp.getState().splitTool;
+        if (tool) {
+          const ll = marker.getLngLat();
+          const lines = featureLines(tool.geometry);
+          const hit = projectSplitPoint(map, lines, [ll.lng, ll.lat], 48);
+          const kept = hit ? useApp.getState().moveSplitPoint(index, hit.point) : false;
+          if (!kept) marker.setLngLat(tool.points[index] ?? [ll.lng, ll.lat]);
+        }
+        splitDragRef.current = null;
+        window.setTimeout(() => {
+          dragged = false;
+          splitSkipMapClickRef.current = false;
+        }, 0);
+      });
+      el.addEventListener("pointercancel", () => {
+        pendingDrag = null;
+        resumePan();
+        if (splitDragRef.current?.index === index) {
+          splitDragRef.current = null;
+          const tool = useApp.getState().splitTool;
+          const back = tool?.points[index];
+          if (back) marker.setLngLat(back);
+        }
+      });
+      const marker = new maplibregl.Marker({ element: el }).setLngLat(pt).addTo(map);
+      splitMarkersRef.current.push(marker);
+    });
+    map.getCanvas().style.cursor = "crosshair";
+
+    return () => {
+      cancel();
+      map.off("mousemove", onSplitMove);
+      map.getCanvas().removeEventListener("pointerup", onSplitPointerUp);
+      splitMarkersRef.current.forEach((m) => m.remove());
+      splitMarkersRef.current = [];
+      splitPreviewMarkerRef.current?.remove();
+      splitPreviewMarkerRef.current = null;
+      splitDragRef.current = null;
+    };
+  }, [splitTool, ready, splitTool?.points]);
+
+  const uiTheme = useApp((s) => s.uiTheme);
+  const buildingTypes = useApp((s) => s.buildingTypes);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const tipCleanups: Array<() => void> = [];
+    const syncPresenceMarkers = () => {
+      tipCleanups.forEach((fn) => fn());
+      tipCleanups.length = 0;
+      presenceMarkersRef.current.forEach((m) => m.remove());
+      presenceMarkersRef.current = [];
+      const st = useApp.getState();
+      for (const user of getPresence()) {
+        for (const lock of user.locks) {
+          const feature =
+            lock.kind === "building"
+              ? buildingFeatureForFocus(st.buildings, lock.id)
+              : streetFeatureForFocus(st.streets, st.pipelineStreetsRaw, lock.id);
+          const ll = feature ? lockAnchor(feature) : null;
+          if (!ll) continue;
+          const target = lockTargetLabel(lock, {
+            streets: st.streets,
+            pipeline: st.pipelineStreetsRaw,
+            buildings: st.buildings,
+            buildingTypes: st.buildingTypes,
+          });
+          const tip = `${user.name} editează ${target}`;
+          const el = document.createElement("div");
+          el.className = "edit-lock-pin";
+          el.dataset.tip = tip;
+          el.setAttribute("aria-label", tip);
+          const name = document.createElement("span");
+          name.className = "edit-lock-pin-label";
+          name.textContent = user.name;
+          const caret = document.createElement("span");
+          caret.className = "edit-lock-pin-caret";
+          caret.setAttribute("aria-hidden", "true");
+          el.append(name, caret);
+          tipCleanups.push(bindPopupTooltips(el));
+          presenceMarkersRef.current.push(new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat(ll).addTo(map));
+        }
+      }
+      if (map.getSource(PRESENCE_LOCK)) pushPresenceLocks(map);
+    };
+    const cancel = whenStyleReady(map, () => {
+      ensurePresenceLockLayers(map);
+      syncPresenceMarkers();
+      ensureOverlayOrder(map);
+    });
+    const unsub = subscribePresence(syncPresenceMarkers);
+    const frame = window.requestAnimationFrame(() => {
+      if (!map.isStyleLoaded()) return;
+      ensurePresenceLockLayers(map);
+      pushPresenceLocks(map);
+      ensureOverlayOrder(map);
+    });
+    return () => {
+      cancel();
+      window.cancelAnimationFrame(frame);
+      unsub();
+      tipCleanups.forEach((fn) => fn());
+      presenceMarkersRef.current.forEach((m) => m.remove());
+      presenceMarkersRef.current = [];
+      clearPresenceLocks(map);
+    };
+  }, [ready, streets, buildings, pipelineStreetsRaw, uiTheme, buildingTypes]);
+
+  // Cât timp segmentezi, focusul hărții e pe strada aleasă.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !splitTool) return;
+    const lines = featureLines(splitTool.geometry);
+    if (!lines.length) return;
+    const bounds = new maplibregl.LngLatBounds();
+    for (const line of lines) for (const c of line) bounds.extend(c as [number, number]);
+    map.fitBounds(bounds, { padding: { top: 90, bottom: 190, left: 50, right: 50 }, maxZoom: 18, duration: 500 });
+    // doar la pornirea uneltei, nu la fiecare punct nou
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [splitTool?.root]);
+
   useEffect(() => {
     if (viewMode !== "reach") return;
     void ensureIsochroneEngine().then((engine) => {
@@ -578,13 +970,10 @@ export function MapView() {
     applyIsochroneToMap(map, { ok: false });
     lastLlRef.current = null;
     lastPxRef.current = null;
-    const empty = emptyIsochroneStats();
-    useApp.getState().setIsochroneStats(empty);
+    useApp.getState().setIsochroneStats(emptyIsochroneStats());
     paintReachPin(reachMarkerRef.current?.getElement() ?? null, {
       live: fineHover() && !pinnedRef.current,
       profile: profileRef.current,
-      minutes: minutesRef.current,
-      stats: empty,
     });
   }, [isochroneStatus]);
 
@@ -644,12 +1033,7 @@ export function MapView() {
     const el = marker.getElement();
     marker.setDraggable(!live);
     el.style.pointerEvents = live ? "none" : "auto";
-    paintReachPin(el, {
-      live,
-      profile: isochroneProfile,
-      minutes: isochroneMinutes,
-      stats: useApp.getState().isochroneStats,
-    });
+    paintReachPin(el, { live, profile: isochroneProfile });
     if (isochronePinned && isochroneOrigin) marker.setLngLat([isochroneOrigin.lng, isochroneOrigin.lat]);
   }, [ready, viewMode, isochroneOrigin, isochronePinned, isochroneProfile, isochroneMinutes]);
 
@@ -677,9 +1061,57 @@ export function MapView() {
   return <div ref={containerRef} className="map-root" aria-label="Hartă Sibiu" />;
 }
 
+function ensureSplitLayers(map: Map) {
+  if (!map.getSource(SPLIT)) map.addSource(SPLIT, { type: "geojson", data: empty() });
+  if (!map.getLayer("split-halo")) {
+    map.addLayer({
+      id: "split-halo",
+      type: "line",
+      source: SPLIT,
+      paint: { "line-color": "#ffffff", "line-width": 11, "line-opacity": 0.85 },
+      layout: { "line-cap": "butt", "line-join": "round" },
+    });
+  }
+  if (!map.getLayer("split-line")) {
+    map.addLayer({
+      id: "split-line",
+      type: "line",
+      source: SPLIT,
+      paint: { "line-color": ["get", "color"], "line-width": 7, "line-opacity": 1 },
+      layout: { "line-cap": "butt", "line-join": "round" },
+    });
+  }
+}
+
+function pushSplitData(map: Map) {
+  const src = map.getSource(SPLIT) as GeoJSONSource | undefined;
+  if (!src) return;
+  const tool = useApp.getState().splitTool;
+  if (!tool) {
+    src.setData(empty());
+    return;
+  }
+  const pieces = computePieces(tool.root, tool.geometry, tool.points);
+  src.setData({
+    type: "FeatureCollection",
+    features: pieces.map((piece) => ({
+      type: "Feature" as const,
+      properties: { color: SPLIT_COLORS[piece.index % SPLIT_COLORS.length] },
+      geometry:
+        piece.lines.length === 1
+          ? ({ type: "LineString", coordinates: piece.lines[0] } as GeoJSON.LineString)
+          : ({ type: "MultiLineString", coordinates: piece.lines } as GeoJSON.MultiLineString),
+    })),
+  });
+}
+
 function rebuildOverlays(map: Map) {
   try {
     addSourcesAndLayers(map);
+    ensureSplitLayers(map);
+    pushSplitData(map);
+    ensurePresenceLockLayers(map);
+    pushPresenceLocks(map);
     if (useApp.getState().buildings) addBuildingLayers(map);
     pushData(map);
     applyLayerVisibility(map);
@@ -756,11 +1188,28 @@ function applyNeighborhoodStyle(map: Map) {
   applySearchDim(map, useApp.getState().searchFocus?.hit ?? null);
 }
 
+/** Clădirile respectă tipul ales și cartierul. Cele din afara tuturor cartierelor rămân vizibile. */
+function buildingFilter(): maplibregl.FilterSpecification {
+  const st = useApp.getState();
+  return buildingLayerFilter(
+    st.filters.neighborhoods,
+    st.neighborhoodList.map((n) => n.slug),
+    buildingTypeFilterExpr(st.filters.buildingTypes)
+  ) as unknown as maplibregl.FilterSpecification;
+}
+
+function applyBuildingFilter(map: Map) {
+  const f = buildingFilter();
+  if (map.getLayer(BLD + "-fill")) map.setFilter(BLD + "-fill", f);
+  if (map.getLayer(BLD + "-line")) map.setFilter(BLD + "-line", f);
+}
+
 function applyLayerVisibility(map: Map) {
   const { layers, editMode } = useApp.getState();
 
   setVis(map, BLD + "-fill", layers.buildings);
   setVis(map, BLD + "-line", layers.buildings);
+  applyBuildingFilter(map);
 
   setVis(map, "streets-base", layers.streetsBase || editMode);
   setVis(map, "streets-bike", layers.bike);
@@ -768,8 +1217,12 @@ function applyLayerVisibility(map: Map) {
   setVis(map, "streets-reserved", layers.reserved);
   setVis(map, "streets-illegal", layers.illegal);
   setVis(map, "streets-school", layers.schoolAssign);
-  setVis(map, "streets-edit", editMode);
-  setVis(map, "streets-halo", editMode);
+  setVis(map, "streets-edit", editMode && layers.editedStreets);
+  setVis(map, "streets-halo", editMode && layers.editedStreets);
+  const splitOn = Boolean(useApp.getState().splitTool);
+  setVis(map, "split-halo", splitOn);
+  setVis(map, "split-line", splitOn);
+  if (!splitOn) pushSplitData(map);
   setVis(map, "nb-fill", layers.neighborhoods);
   setVis(map, "nb-halo", layers.neighborhoods);
   setVis(map, "nb-line", layers.neighborhoods);
@@ -781,12 +1234,6 @@ function applyLayerVisibility(map: Map) {
     setVis(map, "nb-halo", false);
     setVis(map, "nb-line", false);
     setVis(map, "nb-label", true);
-    setVis(map, "streets-bike", false);
-    setVis(map, "streets-bike-door", false);
-    setVis(map, "streets-reserved", false);
-    setVis(map, "streets-illegal", false);
-    setVis(map, "streets-school", false);
-    setVis(map, "streets-base", true);
     if (map.getLayer("nb-label")) map.setPaintProperty("nb-label", "text-halo-width", 3.2);
   } else if (map.getLayer("nb-label")) {
     const darkBg = ["dark", "satellite"].includes(useApp.getState().basemap);
@@ -828,6 +1275,8 @@ function ensureOverlayOrder(map: Map) {
     "streets-edit",
     BLD + "-fill",
     BLD + "-line",
+    "presence-lock-casing",
+    "presence-lock-line",
     "nb-halo",
     "nb-line",
     "streets-label-halo",
@@ -837,6 +1286,8 @@ function ensureOverlayOrder(map: Map) {
     "isochrone-line",
     "nb-label",
     ...searchGlowOverlayLayerIds(),
+    "split-halo",
+    "split-line",
   ];
   for (const id of bottomToTop) {
     if (map.getLayer(id)) {
@@ -1208,6 +1659,7 @@ function addBuildingLayers(map: Map) {
       paint: { "line-color": "#111", "line-width": 0.4, "line-opacity": 0.35 },
     });
   }
+  applyBuildingFilter(map);
   // Keep buildings visible when zoomed out (older sessions may still have a high minzoom).
   if (map.getLayer(BLD + "-fill")) map.setLayerZoomRange(BLD + "-fill", 0, 24);
   if (map.getLayer(BLD + "-line")) map.setLayerZoomRange(BLD + "-line", 0, 24);
@@ -1239,29 +1691,11 @@ function publishReach(
     st.schools
   );
   st.setIsochroneStats(stats);
-  paintReachPin(marker?.getElement() ?? null, {
-    live: fineHover() && !pinned,
-    profile,
-    minutes: st.isochroneMinutes,
-    stats,
-  });
+  paintReachPin(marker?.getElement() ?? null, { live: fineHover() && !pinned, profile });
 }
 
-function fillReachChips(el: HTMLElement | null, names: string[]) {
-  if (!el) return;
-  el.replaceChildren();
-  for (const name of names) {
-    const s = document.createElement("span");
-    s.className = "reach-chip";
-    s.textContent = name;
-    el.append(s);
-  }
-}
-
-function paintReachPin(
-  el: HTMLElement | null,
-  opts: { live: boolean; profile: string; minutes: number; stats: IsochroneStats }
-) {
+/** Pinul de pe hartă: doar punctul + indiciul de mutare. Statisticile stau în panoul din colț. */
+function paintReachPin(el: HTMLElement | null, opts: { live: boolean; profile: string }) {
   if (!el) return;
   el.classList.add("reach-pin");
   el.classList.toggle("is-live", opts.live);
@@ -1271,65 +1705,13 @@ function paintReachPin(
   el.style.pointerEvents = opts.live ? "none" : "auto";
   const hint = el.querySelector<HTMLElement>(".reach-pin-hint");
   if (hint) hint.hidden = opts.live;
-  const card = el.querySelector<HTMLElement>(".reach-pin-card");
-  if (!card) return;
-  const stats = opts.stats;
-  const show = Boolean(stats.here || stats.reachable);
-  card.hidden = !show;
-  if (!show) return;
-  const here = card.querySelector<HTMLElement>(".reach-pin-here");
-  const min = card.querySelector<HTMLElement>("[data-min]");
-  const speed = card.querySelector<HTMLElement>("[data-speed]");
-  const area = card.querySelector<HTMLElement>("[data-area]");
-  const km = card.querySelector<HTMLElement>("[data-km]");
-  const metrics = card.querySelector<HTMLElement>(".reach-pin-metrics");
-  const nbBlock = card.querySelector<HTMLElement>("[data-nb]");
-  const schoolBlock = card.querySelector<HTMLElement>("[data-schools]");
-  const empty = card.querySelector<HTMLElement>(".reach-pin-empty");
-  if (here) here.textContent = stats.here || "În afara cartierelor";
-  if (!stats.reachable) {
-    if (metrics) metrics.hidden = true;
-    if (nbBlock) nbBlock.hidden = true;
-    if (schoolBlock) schoolBlock.hidden = true;
-    if (empty) {
-      empty.hidden = false;
-      empty.textContent = "Departe de rețeaua de străzi";
-    }
-    return;
-  }
-  if (metrics) metrics.hidden = false;
-  if (empty) empty.hidden = true;
-  if (min) min.textContent = String(opts.minutes);
-  if (speed) speed.textContent = String(opts.profile === "walk" ? WALK_KMH : BIKE_KMH);
-  if (area) area.textContent = formatStatNumber(stats.areaKm2);
-  if (km) km.textContent = formatStatNumber(stats.streetKm);
-
-  const nbNames = stats.reached;
-  if (nbBlock) {
-    const label = nbBlock.querySelector<HTMLElement>("[data-nb-label]");
-    const count = nbBlock.querySelector<HTMLElement>("[data-nb-count]");
-    if (label) label.textContent = "Cartiere";
-    if (count) count.textContent = `${nbNames.length} ${nbNames.length === 1 ? "cartier" : "cartiere"}`;
-    fillReachChips(nbBlock.querySelector<HTMLElement>("[data-nb-chips]"), nbNames);
-    nbBlock.hidden = nbNames.length === 0;
-  }
-
-  const schoolNames = stats.schoolNames.map(shortSchoolName);
-  if (schoolBlock) {
-    const count = schoolBlock.querySelector<HTMLElement>("[data-schools-count]");
-    if (count) {
-      count.textContent = `${stats.schoolCount} ${stats.schoolCount === 1 ? "școală" : "școli"}`;
-    }
-    fillReachChips(schoolBlock.querySelector<HTMLElement>("[data-school-chips]"), schoolNames);
-    schoolBlock.hidden = stats.schoolCount === 0;
-  }
 }
 
 function reachPinEl(live: boolean) {
   const el = document.createElement("div");
   el.className = "reach-pin is-bike";
-  el.innerHTML = `<span class="reach-pin-pulse"></span><span class="reach-pin-dot"></span><div class="reach-pin-hint" hidden><span class="reach-pin-hint-desk">Click pe punct ca să-l muți</span><span class="reach-pin-hint-touch">Ține apăsat ca să muți</span></div><div class="reach-pin-card" hidden><div class="reach-pin-here"></div><div class="reach-pin-metrics"><div class="reach-pin-metric"><b data-min></b><span>min</span></div><div class="reach-pin-metric is-speed"><b data-speed></b><span>km/h</span></div><div class="reach-pin-metric"><b data-area></b><span>km²</span></div><div class="reach-pin-metric"><b data-km></b><span>km străzi</span></div></div><div class="reach-pin-block" data-nb hidden><div class="reach-pin-label"><span data-nb-label></span><em data-nb-count></em></div><div class="reach-pin-chips" data-nb-chips></div></div><div class="reach-pin-block" data-schools hidden><div class="reach-pin-label"><span>Școli</span><em data-schools-count></em></div><div class="reach-pin-chips" data-school-chips></div></div><div class="reach-pin-empty" hidden></div></div>`;
-  paintReachPin(el, { live, profile: "bike", minutes: 5, stats: emptyIsochroneStats() });
+  el.innerHTML = `<span class="reach-pin-pulse"></span><span class="reach-pin-dot"></span><div class="reach-pin-hint" hidden><span class="reach-pin-hint-desk">Click pe punct ca să-l muți</span><span class="reach-pin-hint-touch">Ține apăsat ca să muți</span></div>`;
+  paintReachPin(el, { live, profile: "bike" });
   return el;
 }
 
@@ -1388,6 +1770,271 @@ function addIsochroneLayers(map: Map) {
         "line-opacity": 0.95,
       },
     });
+  }
+}
+
+function splitReachMeters(map: Map, lat: number, radiusPx: number) {
+  const metersPerPx = (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, map.getZoom());
+  return Math.max(8, radiusPx * metersPerPx * 1.4);
+}
+
+function projectSplitPoint(map: Map, lines: ReturnType<typeof featureLines>, p: SplitPoint, radiusPx: number) {
+  const hit = projectOnLines(lines, p);
+  const reach = splitReachMeters(map, p[1], radiusPx);
+  if (!hit || hit.distM > reach) return null;
+  return hit;
+}
+
+function bindPopupTooltips(popupEl: HTMLElement) {
+  const HOVER_MS = 0;
+  const HOLD_MS = 450;
+  let bubble: HTMLDivElement | null = null;
+  let hoverTimer = 0;
+  let holdTimer = 0;
+  let suppressClick = false;
+  let activeBtn: HTMLElement | null = null;
+
+  const placeBubble = (btn: HTMLElement) => {
+    if (!bubble) {
+      bubble = document.createElement("div");
+      bubble.className = "tip-bubble";
+      bubble.setAttribute("role", "tooltip");
+      document.body.appendChild(bubble);
+    }
+    const tip = btn.dataset.tip || btn.getAttribute("aria-label") || "";
+    bubble.textContent = tip;
+    const rect = btn.getBoundingClientRect();
+    const gap = 8;
+    const estH = 40;
+    const below = rect.bottom + gap + estH <= window.innerHeight - 8;
+    const top = below ? rect.bottom + gap : rect.top - gap;
+    const transform = below ? "translate(-50%, 0)" : "translate(-50%, -100%)";
+    const center = rect.left + rect.width / 2;
+    const half = 110;
+    const left = Math.min(window.innerWidth - 8 - half, Math.max(8 + half, center));
+    bubble.style.position = "fixed";
+    bubble.style.zIndex = "80";
+    bubble.style.top = `${top}px`;
+    bubble.style.left = `${left}px`;
+    bubble.style.transform = transform;
+    bubble.style.display = "block";
+  };
+
+  const hideBubble = () => {
+    window.clearTimeout(hoverTimer);
+    window.clearTimeout(holdTimer);
+    suppressClick = false;
+    activeBtn = null;
+    if (bubble) bubble.style.display = "none";
+  };
+
+  const onOver = (ev: Event) => {
+    const btn = (ev.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip]");
+    if (!btn || !popupEl.contains(btn)) return;
+    activeBtn = btn;
+    window.clearTimeout(hoverTimer);
+    if (HOVER_MS <= 0) {
+      placeBubble(btn);
+      return;
+    }
+    hoverTimer = window.setTimeout(() => placeBubble(btn), HOVER_MS);
+  };
+
+  const onOut = (ev: Event) => {
+    const rel = (ev as MouseEvent).relatedTarget as Node | null;
+    if (rel && (rel as HTMLElement).closest?.("[data-tip]") === activeBtn) return;
+    hideBubble();
+  };
+
+  const onFocusIn = (ev: Event) => {
+    const btn = (ev.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip]");
+    if (!btn || !popupEl.contains(btn)) return;
+    activeBtn = btn;
+    placeBubble(btn);
+  };
+
+  const onFocusOut = () => hideBubble();
+
+  const onPointerDown = (ev: PointerEvent) => {
+    const btn = (ev.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip]");
+    if (!btn || !popupEl.contains(btn) || ev.pointerType !== "touch") return;
+    activeBtn = btn;
+    window.clearTimeout(holdTimer);
+    suppressClick = false;
+    holdTimer = window.setTimeout(() => {
+      suppressClick = true;
+      placeBubble(btn);
+    }, HOLD_MS);
+  };
+
+  const onPointerUp = (ev: PointerEvent) => {
+    if (ev.pointerType !== "touch") return;
+    window.clearTimeout(holdTimer);
+    if (suppressClick) hideBubble();
+  };
+
+  const onClickCapture = (ev: Event) => {
+    if (!suppressClick) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    suppressClick = false;
+    hideBubble();
+  };
+
+  popupEl.addEventListener("mouseover", onOver);
+  popupEl.addEventListener("mouseout", onOut);
+  popupEl.addEventListener("focusin", onFocusIn);
+  popupEl.addEventListener("focusout", onFocusOut);
+  popupEl.addEventListener("pointerdown", onPointerDown);
+  popupEl.addEventListener("pointerup", onPointerUp);
+  popupEl.addEventListener("pointercancel", onPointerUp);
+  popupEl.addEventListener("click", onClickCapture, true);
+
+  return () => {
+    hideBubble();
+    bubble?.remove();
+    bubble = null;
+    popupEl.removeEventListener("mouseover", onOver);
+    popupEl.removeEventListener("mouseout", onOut);
+    popupEl.removeEventListener("focusin", onFocusIn);
+    popupEl.removeEventListener("focusout", onFocusOut);
+    popupEl.removeEventListener("pointerdown", onPointerDown);
+    popupEl.removeEventListener("pointerup", onPointerUp);
+    popupEl.removeEventListener("pointercancel", onPointerUp);
+    popupEl.removeEventListener("click", onClickCapture, true);
+  };
+}
+
+function featureMidpoint(geometry: GeoJSON.Geometry | null | undefined): [number, number] | null {
+  const lines = featureLines(geometry);
+  if (!lines.length) return null;
+  const bounds = new maplibregl.LngLatBounds();
+  for (const line of lines) for (const c of line) bounds.extend(c as [number, number]);
+  const c = bounds.getCenter();
+  return [c.lng, c.lat];
+}
+
+function polygonCentroid(geometry: GeoJSON.Geometry): [number, number] | null {
+  const ring =
+    geometry.type === "Polygon"
+      ? geometry.coordinates[0]
+      : geometry.type === "MultiPolygon"
+        ? geometry.coordinates[0]?.[0]
+        : null;
+  if (!ring?.length) return null;
+  let x = 0;
+  let y = 0;
+  for (const c of ring) {
+    x += c[0];
+    y += c[1];
+  }
+  return [x / ring.length, y / ring.length];
+}
+
+function lineMidpoint(geometry: GeoJSON.Geometry): [number, number] | null {
+  const lines = featureLines(geometry);
+  if (!lines.length) return null;
+  let best = lines[0];
+  let bestLen = -1;
+  for (const line of lines) {
+    let len = 0;
+    for (let i = 1; i < line.length; i++) len += Math.hypot(line[i][0] - line[i - 1][0], line[i][1] - line[i - 1][1]);
+    if (len > bestLen) {
+      best = line;
+      bestLen = len;
+    }
+  }
+  if (!best.length) return null;
+  if (best.length === 1 || bestLen <= 0) return best[0];
+  const target = bestLen / 2;
+  let walked = 0;
+  for (let i = 1; i < best.length; i++) {
+    const a = best[i - 1];
+    const b = best[i];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const seg = Math.hypot(dx, dy);
+    if (walked + seg >= target && seg > 0) {
+      const t = (target - walked) / seg;
+      return [a[0] + dx * t, a[1] + dy * t];
+    }
+    walked += seg;
+  }
+  return best[best.length - 1];
+}
+
+function lockAnchor(feature: GeoJSON.Feature): [number, number] | null {
+  const g = feature.geometry;
+  if (!g || g.type === "GeometryCollection") return null;
+  if (g.type === "Polygon" || g.type === "MultiPolygon") return polygonCentroid(g);
+  return lineMidpoint(g) || featureMidpoint(g);
+}
+
+function presenceAccentColor() {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  return raw || "#0f7a4c";
+}
+
+function presenceLockCollection(): GeoJSON.FeatureCollection {
+  const st = useApp.getState();
+  const features: GeoJSON.Feature[] = [];
+  for (const user of getPresence()) {
+    for (const lock of user.locks) {
+      const feature =
+        lock.kind === "building"
+          ? buildingFeatureForFocus(st.buildings, lock.id)
+          : streetFeatureForFocus(st.streets, st.pipelineStreetsRaw, lock.id);
+      if (!feature?.geometry || feature.geometry.type === "GeometryCollection") continue;
+      features.push({
+        type: "Feature",
+        properties: {},
+        geometry: feature.geometry,
+      });
+    }
+  }
+  return { type: "FeatureCollection", features };
+}
+
+function ensurePresenceLockLayers(map: Map) {
+  if (!map.getSource(PRESENCE_LOCK)) {
+    map.addSource(PRESENCE_LOCK, { type: "geojson", data: empty() });
+  }
+  const accent = presenceAccentColor();
+  if (!map.getLayer("presence-lock-casing")) {
+    map.addLayer({
+      id: "presence-lock-casing",
+      type: "line",
+      source: PRESENCE_LOCK,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": "#ffffff", "line-width": 5, "line-opacity": 0.8 },
+    });
+  }
+  if (!map.getLayer("presence-lock-line")) {
+    map.addLayer({
+      id: "presence-lock-line",
+      type: "line",
+      source: PRESENCE_LOCK,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": accent, "line-width": 2.4, "line-opacity": 0.95 },
+    });
+  } else {
+    map.setPaintProperty("presence-lock-line", "line-color", accent);
+  }
+}
+
+function pushPresenceLocks(map: Map) {
+  const src = map.getSource(PRESENCE_LOCK) as GeoJSONSource | undefined;
+  if (!src) return;
+  src.setData(presenceLockCollection());
+  if (map.getLayer("presence-lock-line")) map.setPaintProperty("presence-lock-line", "line-color", presenceAccentColor());
+}
+
+function clearPresenceLocks(map: Map) {
+  try {
+    const src = map.getSource(PRESENCE_LOCK) as GeoJSONSource | undefined;
+    src?.setData(empty());
+  } catch {
+    /* map already removed */
   }
 }
 

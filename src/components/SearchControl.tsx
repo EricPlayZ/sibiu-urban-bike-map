@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import { isDesktopViewport } from "../lib/breakpoints";
 import { panelSpring, popExit } from "../lib/uiMotion";
 import { useApp } from "../store";
+import { Tip } from "./Tip";
 import {
   buildSearchIndex,
   filterSearchHits,
@@ -129,20 +130,21 @@ export function SearchControl() {
 
   return (
     <div className="search-control" ref={rootRef}>
-      <button
-        type="button"
-        className={`chip-btn search-btn ${open ? "on" : ""}`}
-        onClick={() => useApp.getState().toggleSearch()}
-        aria-expanded={open}
-        aria-controls="map-search-popover"
-        aria-haspopup="dialog"
-        aria-pressed={open}
-        aria-keyshortcuts="Control+K Meta+K"
-        title="Caută (Ctrl+K)"
-      >
-        <Search size={16} strokeWidth={2.25} aria-hidden />
-        <span>Caută</span>
-      </button>
+      <Tip text="Caută (Ctrl+K)">
+        <button
+          type="button"
+          className={`chip-btn search-btn ${open ? "on" : ""}`}
+          onClick={() => useApp.getState().toggleSearch()}
+          aria-expanded={open}
+          aria-controls="map-search-popover"
+          aria-haspopup="dialog"
+          aria-pressed={open}
+          aria-keyshortcuts="Control+K Meta+K"
+        >
+          <Search size={16} strokeWidth={2.25} aria-hidden />
+          <span>Caută</span>
+        </button>
+      </Tip>
 
       <AnimatePresence>
         {open && (

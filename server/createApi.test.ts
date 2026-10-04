@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApi, type ApiConfig } from "./createApi";
+import { pieceSid } from "../src/lib/streetSplits";
 import { originAllowed } from "./config";
 import { isSafeId } from "./ids";
 import { LOGIN_MAX_FAILURES, passwordsMatch, sanitizeDisplayName, signSession, verifySession } from "./auth";
@@ -428,6 +429,40 @@ describe("team api", () => {
     }
   });
 
+  it("GET /api/me includes session sid for authed users", async () => {
+    const { server, url } = await boot();
+    try {
+      const loginRes = await login(url, "test-password-12", "Ana");
+      const cookie = cookieFrom(loginRes);
+      const me = await fetch(`${url}/api/me`, { headers: { Cookie: cookie } });
+      expect(me.status).toBe(200);
+      const body = (await me.json()) as { name: string; sid: string };
+      expect(body.name).toBe("Ana");
+      expect(typeof body.sid).toBe("string");
+      expect(body.sid.length).toBeGreaterThan(8);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("DELETE building edit removes override", async () => {
+    const { server, url } = await boot();
+    try {
+      const headers = await sessionHeaders(url, "Ana");
+      await fetch(`${url}/api/edits/buildings/b_9`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ type: "casa" }),
+      });
+      const del = await fetch(`${url}/api/edits/buildings/b_9`, { method: "DELETE", headers });
+      expect(del.status).toBe(204);
+      const snap = (await (await fetch(`${url}/api/edits`)).json()) as { buildings: { edits: Record<string, unknown> } };
+      expect(snap.buildings.edits.b_9).toBeUndefined();
+    } finally {
+      server.close();
+    }
+  });
+
   it("GET /api/edits is public; building PUT is not", async () => {
     const { server, url } = await boot();
     try {
@@ -439,6 +474,133 @@ describe("team api", () => {
         body: JSON.stringify({ type: "casa" }),
       });
       expect(anon.status).toBe(401);
+    } finally {
+      server.close();
+    }
+  });
+
+  async function sessionHeaders(url: string, name: string) {
+    const res = await login(url, "test-password-12", name);
+    return { Origin: ORIGIN, "Content-Type": "application/json", Cookie: cookieFrom(res) };
+  }
+
+  it("rejects street and building writes while another session holds the lock", async () => {
+    const { server, url } = await boot();
+    try {
+      const ana = await sessionHeaders(url, "Ana");
+      const bogdan = await sessionHeaders(url, "Bogdan");
+      await fetch(`${url}/api/locks`, { method: "POST", headers: ana, body: JSON.stringify({ kind: "street", id: "st_1" }) });
+      await fetch(`${url}/api/locks`, { method: "POST", headers: ana, body: JSON.stringify({ kind: "building", id: "b_1" }) });
+
+      const street = await fetch(`${url}/api/edits/streets/st_1`, {
+        method: "PUT",
+        headers: bogdan,
+        body: JSON.stringify({ carriageway_m: 7, source: "local" }),
+      });
+      expect(street.status).toBe(423);
+      expect(((await street.json()) as { holder: string }).holder).toBe("Ana");
+
+      const bld = await fetch(`${url}/api/edits/buildings/b_1`, {
+        method: "PUT",
+        headers: bogdan,
+        body: JSON.stringify({ type: "casa" }),
+      });
+      expect(bld.status).toBe(423);
+
+      // Cel care ține lock-ul poate scrie; alte entități rămân libere.
+      const own = await fetch(`${url}/api/edits/streets/st_1`, {
+        method: "PUT",
+        headers: ana,
+        body: JSON.stringify({ carriageway_m: 7, source: "local" }),
+      });
+      expect(own.status).toBe(200);
+      const other = await fetch(`${url}/api/edits/streets/st_2`, {
+        method: "PUT",
+        headers: bogdan,
+        body: JSON.stringify({ carriageway_m: 7, source: "local" }),
+      });
+      expect(other.status).toBe(200);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("saves street splits, hands the old measurements to the new piece and clears them on merge", async () => {
+    const { server, url } = await boot();
+    try {
+      const ana = await sessionHeaders(url, "Ana");
+      await fetch(`${url}/api/edits/streets/st_a`, {
+        method: "PUT",
+        headers: ana,
+        body: JSON.stringify({ carriageway_m: 6, length_m: 400, source: "local" }),
+      });
+      const point = [24.16, 45.79];
+      const newSid = "st_a:s" + Math.round(24.16 * 1e6).toString(36) + "-" + Math.round(45.79 * 1e6).toString(36);
+
+      const split = await fetch(`${url}/api/edits/splits/st_a`, {
+        method: "PUT",
+        headers: ana,
+        body: JSON.stringify({ points: [point], inherit: { [newSid]: "st_a" } }),
+      });
+      expect(split.status).toBe(200);
+      const saved = (await split.json()) as { points: number[][]; inherited: Record<string, { carriageway_m?: number; length_m?: number }> };
+      expect(saved.points).toEqual([point]);
+      expect(saved.inherited[newSid]?.carriageway_m).toBe(6);
+      expect(saved.inherited[newSid]?.length_m).toBeUndefined();
+
+      const snap = (await (await fetch(`${url}/api/edits`)).json()) as {
+        splits: { splits: Record<string, number[][]> };
+        streets: { edits: Record<string, { carriageway_m?: number; length_m?: number }> };
+      };
+      expect(snap.splits.splits.st_a).toEqual([point]);
+      expect(snap.streets.edits[newSid].carriageway_m).toBe(6);
+      // Lungimea veche era a întregii străzi: nu mai are sens după tăiere.
+      expect(snap.streets.edits.st_a.length_m).toBeUndefined();
+      expect(snap.streets.edits.st_a.carriageway_m).toBe(6);
+
+      const merged = await fetch(`${url}/api/edits/splits/st_a`, {
+        method: "PUT",
+        headers: ana,
+        body: JSON.stringify({ points: [] }),
+      });
+      expect(merged.status).toBe(200);
+      const after = (await (await fetch(`${url}/api/edits`)).json()) as {
+        splits: { splits: Record<string, unknown> };
+        streets: { edits: Record<string, unknown> };
+      };
+      expect(after.splits.splits.st_a).toBeUndefined();
+      expect(after.streets.edits[newSid]).toBeUndefined();
+    } finally {
+      server.close();
+    }
+  });
+
+  it("requires auth and a free street for splits", async () => {
+    const { server, url } = await boot();
+    try {
+      const anon = await fetch(`${url}/api/edits/splits/st_a`, {
+        method: "PUT",
+        headers: loginHeaders(),
+        body: JSON.stringify({ points: [[24.16, 45.79]] }),
+      });
+      expect(anon.status).toBe(401);
+
+      const ana = await sessionHeaders(url, "Ana");
+      const bogdan = await sessionHeaders(url, "Bogdan");
+      await fetch(`${url}/api/locks`, { method: "POST", headers: ana, body: JSON.stringify({ kind: "street", id: "st_a" }) });
+      const blocked = await fetch(`${url}/api/edits/splits/st_a`, {
+        method: "PUT",
+        headers: bogdan,
+        body: JSON.stringify({ points: [[24.16, 45.79]] }),
+      });
+      expect(blocked.status).toBe(423);
+
+      const bad = await fetch(`${url}/api/edits/splits/${encodeURIComponent("st_a:s1")}`, {
+        method: "PUT",
+        headers: ana,
+        body: JSON.stringify({ points: [[24.16, 45.79]] }),
+      });
+      expect(bad.status).toBe(400);
     } finally {
       server.close();
     }
@@ -466,6 +628,130 @@ describe("team api", () => {
       expect(saved.renames.centru.ok_street).toBe("Ok");
       expect(Object.prototype.hasOwnProperty("polluted")).toBe(false);
       expect(({} as { polluted?: string }).polluted).toBeUndefined();
+    } finally {
+      server.close();
+    }
+  });
+
+  it("purges every building type and every split, including piece measurements", async () => {
+    const { server, url } = await boot();
+    try {
+      const ana = await sessionHeaders(url, "Ana");
+      const point: [number, number] = [24.16, 45.79];
+      const piece = pieceSid("st_a", point);
+      const building = await fetch(`${url}/api/edits/buildings/b_1`, {
+        method: "PUT",
+        headers: ana,
+        body: JSON.stringify({ type: "casa" }),
+      });
+      const street = await fetch(`${url}/api/edits/streets/${encodeURIComponent(piece)}`, {
+        method: "PUT",
+        headers: ana,
+        body: JSON.stringify({ carriageway_m: 4, source: "local" }),
+      });
+      const split = await fetch(`${url}/api/edits/splits/st_a`, {
+        method: "PUT",
+        headers: ana,
+        body: JSON.stringify({ points: [point], inherit: {} }),
+      });
+      expect(building.status).toBe(200);
+      expect(street.status).toBe(200);
+      expect(split.status).toBe(200);
+
+      const anon = await fetch(`${url}/api/edits/buildings/purge`, {
+        method: "POST",
+        headers: { Origin: ORIGIN, "Content-Type": "application/json" },
+        body: "{}",
+      });
+      expect(anon.status).toBe(401);
+
+      const purgedBuildings = await fetch(`${url}/api/edits/buildings/purge`, { method: "POST", headers: ana, body: "{}" });
+      const purgedSplits = await fetch(`${url}/api/edits/splits/purge`, { method: "POST", headers: ana, body: "{}" });
+      expect(purgedBuildings.status).toBe(200);
+      expect(purgedSplits.status).toBe(200);
+      const splitBody = (await purgedSplits.json()) as { removed: string[] };
+      expect(splitBody.removed).toEqual([piece]);
+
+      const snap = (await (await fetch(`${url}/api/edits`)).json()) as {
+        buildings: { edits: Record<string, unknown> };
+        splits: { splits: Record<string, unknown> };
+        streets: { edits: Record<string, unknown> };
+      };
+      expect(snap.buildings.edits.b_1).toBeUndefined();
+      expect(snap.splits.splits.st_a).toBeUndefined();
+      expect(snap.streets.edits[piece]).toBeUndefined();
+    } finally {
+      server.close();
+    }
+  });
+
+  it("drops the edit lock when its tab disconnects and leaves the other tab alone", async () => {
+    const { server, url } = await boot();
+    const controllers: AbortController[] = [];
+    const openEvents = async (cookie: string, tab: string) => {
+      const ac = new AbortController();
+      controllers.push(ac);
+      const res = await fetch(`${url}/api/events?tab=${tab}`, { headers: { Cookie: cookie }, signal: ac.signal });
+      expect(res.status).toBe(200);
+      const reader = res.body?.getReader();
+      const chunk = await reader?.read();
+      expect(Buffer.from(chunk?.value || []).toString()).toContain("hello");
+      return ac;
+    };
+    const tryLock = (headers: Record<string, string>, id: string) =>
+      fetch(`${url}/api/locks`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ kind: "street", id, tab: "cccccccc3ccccccc" }),
+      });
+    try {
+      const ana = await sessionHeaders(url, "Ana");
+      const bogdan = await sessionHeaders(url, "Bogdan");
+      const tabA = "aaaaaaa1aaaaaaaa";
+      const tabB = "bbbbbbb2bbbbbbbb";
+      const eventsA = await openEvents(ana.Cookie, tabA);
+      const eventsB = await openEvents(ana.Cookie, tabB);
+      const lock = await fetch(`${url}/api/locks`, {
+        method: "POST",
+        headers: ana,
+        body: JSON.stringify({ kind: "street", id: "st_1", tab: tabA }),
+      });
+      expect(lock.status).toBe(200);
+
+      eventsB.abort();
+      await new Promise((r) => setTimeout(r, 80));
+      expect((await tryLock(bogdan, "st_1")).status).toBe(409);
+
+      eventsA.abort();
+      let status = 409;
+      for (let i = 0; i < 20 && status === 409; i++) {
+        status = (await tryLock(bogdan, "st_1")).status;
+        if (status === 409) await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(status).toBe(200);
+    } finally {
+      for (const ac of controllers) ac.abort();
+      server.close();
+    }
+  });
+
+  it("release-tab drops only that tab's lock", async () => {
+    const { server, url } = await boot();
+    try {
+      const ana = await sessionHeaders(url, "Ana");
+      const bogdan = await sessionHeaders(url, "Bogdan");
+      const tabA = "aaaaaaa1aaaaaaaa";
+      const tabB = "bbbbbbb2bbbbbbbb";
+      expect((await fetch(`${url}/api/locks`, { method: "POST", headers: ana, body: JSON.stringify({ kind: "street", id: "st_1", tab: tabA }) })).status).toBe(200);
+      expect((await fetch(`${url}/api/locks`, { method: "POST", headers: ana, body: JSON.stringify({ kind: "building", id: "b_1", tab: tabB }) })).status).toBe(200);
+      const released = await fetch(`${url}/api/locks/release-tab`, {
+        method: "POST",
+        headers: ana,
+        body: JSON.stringify({ tab: tabA }),
+      });
+      expect(released.status).toBe(200);
+      expect((await fetch(`${url}/api/locks`, { method: "POST", headers: bogdan, body: JSON.stringify({ kind: "street", id: "st_1", tab: "cccccccc3ccccccc" }) })).status).toBe(200);
+      expect((await fetch(`${url}/api/locks`, { method: "POST", headers: bogdan, body: JSON.stringify({ kind: "building", id: "b_1", tab: "cccccccc3ccccccc" }) })).status).toBe(409);
     } finally {
       server.close();
     }

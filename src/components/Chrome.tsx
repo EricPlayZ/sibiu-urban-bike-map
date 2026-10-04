@@ -2,9 +2,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef } from "react";
 import { fadeExit, panelSpring, springExit } from "../lib/uiMotion";
 import { Bike, Building2, Bug, ChartColumn, Filter, GraduationCap, Layers, ListTree, Monitor, Moon, Pencil, Sun, Table2, Timer } from "lucide-react";
+import { countSavedEdits } from "../lib/editBundle";
 import { useApp } from "../store";
 import { layersMatchPreset } from "../lib/layers";
-import { hasAnyEdit } from "../lib/space";
 
 export function Toast() {
   const toast = useApp((s) => s.toast);
@@ -68,11 +68,13 @@ export function MobileDock() {
   const importReportOpen = useApp((s) => s.importReportOpen);
   const csvEditorOpen = useApp((s) => s.csvEditorOpen);
   const importReport = useApp((s) => s.importReport);
-  const measurements = useApp((s) => s.measurements);
+  const committedEdits = useApp((s) => s.committedEdits);
+  const buildingTypes = useApp((s) => s.buildingTypes);
+  const streetSplits = useApp((s) => s.streetSplits);
   const uiTheme = useApp((s) => s.uiTheme);
   const teamAuthed = useApp((s) => s.teamAuthed);
   const ThemeIcon = uiTheme === "dark" ? Moon : uiTheme === "light" ? Sun : Monitor;
-  const editsCount = Object.values(measurements).filter(hasAnyEdit).length;
+  const editsCount = countSavedEdits(committedEdits, buildingTypes, streetSplits).total;
   const dockRef = useRef<HTMLElement>(null);
 
   // Panourile stau la același gap (8px) deasupra dock-ului de sus, măsurat din layout real.
@@ -107,7 +109,7 @@ export function MobileDock() {
       <div className="mobile-dock-row mobile-dock-modes" role="group" aria-label="Mod și filtre">
         <button type="button" className={layersMatchPreset(layers, "space", editMode ? { ignore: ["streetsBase"] } : undefined) ? "on" : ""} onClick={() => setViewMode("space")}>
           <Bike size={18} strokeWidth={2.25} />
-          <span>Spațiu</span>
+          <span>Străzi</span>
         </button>
         <button type="button" className={layersMatchPreset(layers, "buildings", editMode ? { ignore: ["streetsBase"] } : undefined) ? "on" : ""} onClick={() => setViewMode("buildings")}>
           <Building2 size={18} strokeWidth={2.25} />
@@ -141,8 +143,8 @@ export function MobileDock() {
           <Pencil size={18} strokeWidth={2.25} />
           <span>Edit</span>
         </button>
-        {teamAuthed ? (
-          <button type="button" className={editsOpen ? "on" : ""} onClick={toggleEdits} aria-pressed={editsOpen}>
+        {teamAuthed && editMode ? (
+          <button type="button" className={editsOpen ? "on" : ""} onClick={toggleEdits} aria-pressed={editsOpen} aria-label={editsCount > 0 ? `Editări (${editsCount})` : "Editări"}>
             <ListTree size={18} strokeWidth={2.25} />
             <span>Editări{editsCount > 0 ? ` (${editsCount})` : ""}</span>
           </button>
@@ -156,16 +158,16 @@ export function MobileDock() {
           <span>Stats</span>
         </button>
         {teamAuthed ? (
-          <>
-            <button type="button" className={importReportOpen ? "on" : ""} onClick={toggleImportReport} aria-pressed={importReportOpen}>
-              <Bug size={18} strokeWidth={2.25} />
-              <span>Import{importReport ? ` (${importReport.issues.filter((i) => i.severity === "error").length})` : ""}</span>
-            </button>
-            <button type="button" className={csvEditorOpen ? "on" : ""} onClick={toggleCsvEditor} aria-pressed={csvEditorOpen}>
-              <Table2 size={18} strokeWidth={2.25} />
-              <span>Sheets</span>
-            </button>
-          </>
+          <button type="button" className={importReportOpen ? "on" : ""} onClick={toggleImportReport} aria-pressed={importReportOpen}>
+            <Bug size={18} strokeWidth={2.25} />
+            <span>Import{importReport ? ` (${importReport.issues.filter((i) => i.severity === "error").length})` : ""}</span>
+          </button>
+        ) : null}
+        {teamAuthed && editMode ? (
+          <button type="button" className={csvEditorOpen ? "on" : ""} onClick={toggleCsvEditor} aria-pressed={csvEditorOpen} aria-label="Măsurători spreadsheet">
+            <Table2 size={18} strokeWidth={2.25} />
+            <span>Sheets</span>
+          </button>
         ) : null}
       </div>
     </nav>

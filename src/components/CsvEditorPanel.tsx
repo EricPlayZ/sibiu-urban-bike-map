@@ -37,6 +37,7 @@ import { LAYER_COLORS } from "../lib/space";
 import { panelSpring, springExit } from "../lib/uiMotion";
 import { useApp } from "../store";
 import { FadeScrim } from "./FadeScrim";
+import { Tip } from "./Tip";
 
 const HEADER_SHORT: Record<string, string> = {
   nume: "Nume",
@@ -298,9 +299,11 @@ export function CsvEditorPanel() {
                   Măsurători spreadsheet
                 </h2>
               </div>
-              <button type="button" className="icon-x" onClick={requestClose} aria-label="Închide">
-                <X size={18} strokeWidth={2.25} />
-              </button>
+              <Tip text="Închide">
+                <button type="button" className="icon-x" onClick={requestClose} aria-label="Închide">
+                  <X size={18} strokeWidth={2.25} />
+                </button>
+              </Tip>
             </div>
 
             {sheetsHolder ? (
@@ -405,17 +408,25 @@ export function CsvEditorPanel() {
                     <thead>
                       <tr>
                         <th className="csv-col-mark">Marcaj</th>
-                        {active.headers.map((h) => (
-                          <th
-                            key={h}
-                            title={h}
-                            className={
-                              isParkingFlagHeader(h) ? "csv-col-flag-src" : nameCol === h ? "csv-col-name" : undefined
-                            }
-                          >
-                            {shortHeader(h)}
-                          </th>
-                        ))}
+                        {active.headers.map((h) => {
+                          const short = shortHeader(h);
+                          return (
+                            <th
+                              key={h}
+                              className={
+                                isParkingFlagHeader(h) ? "csv-col-flag-src" : nameCol === h ? "csv-col-name" : undefined
+                              }
+                            >
+                              {short === h ? (
+                                short
+                              ) : (
+                                <Tip text={h}>
+                                  <span>{short}</span>
+                                </Tip>
+                              )}
+                            </th>
+                          );
+                        })}
                         <th className="csv-col-flags">Flag-uri din lățimi</th>
                         <th className="csv-col-del"> </th>
                       </tr>
@@ -499,33 +510,39 @@ function CsvEditorRowView({
     <tr className={`csv-row mark-${row.mark} ${match ? "match" : "mismatch"} ${row.omitted ? "omitted" : ""}`}>
       <td className="csv-col-mark">
         <div className="csv-mark-seg" role="group" aria-label="Marcaj așteptat">
-          <button
-            type="button"
-            className={row.mark === "none" ? "on" : ""}
-            title="Fără parcare pe trotuar"
-            aria-pressed={row.mark === "none"}
-            onClick={() => onMark(row.id, "none")}
-          >
-            —
-          </button>
-          <button
-            type="button"
-            className={`mark-illegal ${row.mark === "illegal" ? "on" : ""}`}
-            title="Așteptat: parcare ilegală pe trotuar"
-            aria-pressed={row.mark === "illegal"}
-            onClick={() => onMark(row.id, "illegal")}
-          >
-            I
-          </button>
-          <button
-            type="button"
-            className={`mark-reserved ${row.mark === "reserved" ? "on" : ""}`}
-            title="Așteptat: parcare amenajată pe trotuar"
-            aria-pressed={row.mark === "reserved"}
-            onClick={() => onMark(row.id, "reserved")}
-          >
-            A
-          </button>
+          <Tip text="Fără parcare pe trotuar">
+            <button
+              type="button"
+              className={row.mark === "none" ? "on" : ""}
+              aria-label="Fără parcare pe trotuar"
+              aria-pressed={row.mark === "none"}
+              onClick={() => onMark(row.id, "none")}
+            >
+              —
+            </button>
+          </Tip>
+          <Tip text="Așteptat: parcare ilegală pe trotuar">
+            <button
+              type="button"
+              className={`mark-illegal ${row.mark === "illegal" ? "on" : ""}`}
+              aria-label="Așteptat: parcare ilegală pe trotuar"
+              aria-pressed={row.mark === "illegal"}
+              onClick={() => onMark(row.id, "illegal")}
+            >
+              I
+            </button>
+          </Tip>
+          <Tip text="Așteptat: parcare amenajată pe trotuar">
+            <button
+              type="button"
+              className={`mark-reserved ${row.mark === "reserved" ? "on" : ""}`}
+              aria-label="Așteptat: parcare amenajată pe trotuar"
+              aria-pressed={row.mark === "reserved"}
+              onClick={() => onMark(row.id, "reserved")}
+            >
+              A
+            </button>
+          </Tip>
         </div>
       </td>
       {headers.map((h) => (
@@ -540,7 +557,7 @@ function CsvEditorRowView({
                 aria-label={`Nume — ${display || row.sheetName}`}
               />
               <span className="csv-name-meta">
-                {renamed ? <span title={`Nume în spreadsheet: ${row.sheetName}`}>sheet: {row.sheetName}</span> : null}
+                {renamed ? <span>sheet: {row.sheetName}</span> : null}
                 {row.uniqueKey.includes("#") ? <span>#{row.uniqueKey.split("#")[1]}</span> : null}
                 {row.omitted ? <span className="csv-fix-badge omit">omis</span> : null}
                 {renamed ? <span className="csv-fix-badge rename">rename</span> : null}
@@ -562,13 +579,17 @@ function CsvEditorRowView({
       <td className="csv-col-flags">
         <div className="csv-flags">
           {match ? (
-            <span className="csv-flag-status ok" title="Marcajul coincide cu flag-urile">
-              <Check size={13} strokeWidth={2.5} />
-            </span>
+            <Tip text="Marcajul coincide cu flag-urile">
+              <span className="csv-flag-status ok" role="img" aria-label="Marcajul coincide cu flag-urile">
+                <Check size={13} strokeWidth={2.5} />
+              </span>
+            </Tip>
           ) : (
-            <span className="csv-flag-status bad" title="Marcajul nu coincide cu flag-urile din lățimi">
-              <AlertTriangle size={13} strokeWidth={2.5} />
-            </span>
+            <Tip text="Marcajul nu coincide cu flag-urile din lățimi">
+              <span className="csv-flag-status bad" role="img" aria-label="Marcajul nu coincide cu flag-urile din lățimi">
+                <AlertTriangle size={13} strokeWidth={2.5} />
+              </span>
+            </Tip>
           )}
           {chips.length === 0 ? <span className="csv-flag-none">—</span> : null}
           {chips.map((c) => (
@@ -580,13 +601,17 @@ function CsvEditorRowView({
       </td>
       <td className="csv-col-del">
         {row.omitted ? (
-          <button type="button" className="icon-mini" title="Reia strada" aria-label="Reia strada" onClick={() => onRestore(row.id)}>
-            <RotateCcw size={15} strokeWidth={2.25} />
-          </button>
+          <Tip text="Reia strada">
+            <button type="button" className="icon-mini" aria-label="Reia strada" onClick={() => onRestore(row.id)}>
+              <RotateCcw size={15} strokeWidth={2.25} />
+            </button>
+          </Tip>
         ) : (
-          <button type="button" className="icon-mini danger" title="Omite strada" aria-label="Omite strada" onClick={() => onOmit(row.id)}>
-            <Trash2 size={15} strokeWidth={2.25} />
-          </button>
+          <Tip text="Omite strada">
+            <button type="button" className="icon-mini danger" aria-label="Omite strada" onClick={() => onOmit(row.id)}>
+              <Trash2 size={15} strokeWidth={2.25} />
+            </button>
+          </Tip>
         )}
       </td>
     </tr>

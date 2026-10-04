@@ -1,6 +1,6 @@
 import type { Map } from "maplibre-gl";
 
-/** Flags for overlays that blur or sit on the map and should steal pointer/wheel. */
+/** Flags the map may consult. Corner panels are listed so callers can pass store state. */
 export type MapUiLockFlags = {
   filtersOpen: boolean;
   statsOpen: boolean;
@@ -25,19 +25,12 @@ const MAP_HANDLERS = [
   "touchPitch",
 ] as const;
 
+/**
+ * Import, Editări, Stats, Temă, and Hartă stay in a corner and must not block pan, zoom, or clicks.
+ * Filters, search, the detail sheet, team login, and the CSV editor still take the map.
+ */
 export function isMapUiLocked(s: MapUiLockFlags): boolean {
-  return (
-    s.filtersOpen ||
-    s.statsOpen ||
-    s.basemapOpen ||
-    s.themeOpen ||
-    s.editsOpen ||
-    s.importReportOpen ||
-    s.csvEditorOpen ||
-    s.teamLoginOpen ||
-    s.sheetOpen ||
-    s.searchOpen
-  );
+  return s.filtersOpen || s.csvEditorOpen || s.teamLoginOpen || s.sheetOpen || s.searchOpen;
 }
 
 type ToggleHandler = { enable: () => void; disable: () => void };

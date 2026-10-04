@@ -6,6 +6,7 @@ export type MapLayerId =
   | "bikeDoor"
   | "reserved"
   | "illegal"
+  | "editedStreets"
   | "schoolAssign"
   | "schoolMarkers"
   | "buildings"
@@ -22,8 +23,8 @@ export const LAYER_META: { id: MapLayerId; label: string }[] = [
   { id: "streetsBase", label: "Străzi (bază)" },
   { id: "bike", label: BIKE_SAFE_LABEL },
   { id: "bikeDoor", label: BIKE_DOOR_LABEL },
-  { id: "reserved", label: "Parcare amenajată" },
-  { id: "illegal", label: "Parcare ilegală" },
+  { id: "reserved", label: "Parcare amenajată pe trotuar" },
+  { id: "illegal", label: "Parcare ilegală pe trotuar" },
   { id: "schoolAssign", label: "Arondare școli" },
   { id: "schoolMarkers", label: "Markere școli" },
   { id: "buildings", label: "Clădiri" },
@@ -37,6 +38,7 @@ export const VIEW_PRESETS: Record<ViewMode, LayerVisibility> = {
     bikeDoor: true,
     reserved: true,
     illegal: true,
+    editedStreets: true,
     schoolAssign: false,
     schoolMarkers: false,
     buildings: false,
@@ -48,6 +50,7 @@ export const VIEW_PRESETS: Record<ViewMode, LayerVisibility> = {
     bikeDoor: false,
     reserved: false,
     illegal: false,
+    editedStreets: true,
     schoolAssign: false,
     schoolMarkers: false,
     buildings: true,
@@ -59,6 +62,7 @@ export const VIEW_PRESETS: Record<ViewMode, LayerVisibility> = {
     bikeDoor: false,
     reserved: false,
     illegal: false,
+    editedStreets: true,
     schoolAssign: true,
     schoolMarkers: true,
     buildings: false,
@@ -70,20 +74,20 @@ export const VIEW_PRESETS: Record<ViewMode, LayerVisibility> = {
     bikeDoor: false,
     reserved: false,
     illegal: false,
+    editedStreets: true,
     schoolAssign: false,
-    schoolMarkers: false,
+    schoolMarkers: true,
     buildings: false,
     neighborhoods: false,
   },
 };
 
-/** Focalizări = preseturi pe straturi (ca Spațiu / Clădiri / Școli). */
+/** Focalizări = preseturi pe straturi (ca Străzi / Clădiri / Școli). */
 export const FOCUS_PRESETS: Record<FocusId, Partial<LayerVisibility>> = {
   hideEmpty: {
     streetsBase: false,
   },
   illegalOnly: {
-    streetsBase: false,
     bike: false,
     bikeDoor: false,
     reserved: false,
@@ -91,7 +95,6 @@ export const FOCUS_PRESETS: Record<FocusId, Partial<LayerVisibility>> = {
     schoolAssign: false,
   },
   bikeOnly: {
-    streetsBase: false,
     bike: true,
     bikeDoor: true,
     reserved: false,
@@ -106,7 +109,37 @@ export function layersMatchPreset(layers: LayerVisibility, mode: ViewMode, opts?
   return (Object.keys(preset) as MapLayerId[]).every((k) => ignore.has(k) || layers[k] === preset[k]);
 }
 
-export function layersMatchFocus(layers: LayerVisibility, focus: FocusId) {
+export function layersMatchFocus(layers: LayerVisibility, focus: FocusId, opts?: { ignore?: MapLayerId[] }) {
   const preset = FOCUS_PRESETS[focus];
-  return (Object.keys(preset) as MapLayerId[]).every((k) => layers[k] === preset[k]!);
+  const ignore = new Set(opts?.ignore || []);
+  return (Object.keys(preset) as MapLayerId[]).every((k) => ignore.has(k) || layers[k] === preset[k]!);
+}
+
+/** În editare baza rămâne pornită, ca străzile fără măsurători să se vadă. */
+export function layersForView(mode: ViewMode, editMode: boolean, opts?: { streetsBase?: boolean }): LayerVisibility {
+  const layers = { ...VIEW_PRESETS[mode] };
+  if (opts && "streetsBase" in opts) layers.streetsBase = opts.streetsBase!;
+  if (editMode) layers.streetsBase = true;
+  return layers;
+}
+
+/** Focalizarea nu atinge „ascunde străzile fără date”: baza rămâne cum a lăsat-o utilizatorul. */
+export function layersForFocus(mode: ViewMode, focus: FocusId, editMode: boolean, streetsBase: boolean): LayerVisibility {
+  const layers = { ...VIEW_PRESETS[mode], ...FOCUS_PRESETS[focus] };
+  layers.streetsBase = editMode ? true : streetsBase;
+  return layers;
+}
+
+export function nextLayerToggle(layers: LayerVisibility, id: MapLayerId, on: boolean, editMode: boolean): LayerVisibility {
+  if (editMode && id === "streetsBase" && !on) return layers;
+  return { ...layers, [id]: on };
+}
+
+/** „Ascunde străzile fără date” e doar stratul de bază, separat de celelalte focalizări. */
+export function hideEmptyFocusOn(layers: LayerVisibility) {
+  return !layers.streetsBase;
+}
+
+export function layerLabel(id: MapLayerId) {
+  return LAYER_META.find((layer) => layer.id === id)?.label ?? id;
 }

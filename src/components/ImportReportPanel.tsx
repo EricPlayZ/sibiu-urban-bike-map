@@ -3,6 +3,7 @@ import { AlertTriangle, Bug, CheckCircle2, Info, Search, X } from "lucide-react"
 import { useMemo, useState } from "react";
 import { useApp } from "../store";
 import { panelSpring, springExit } from "../lib/uiMotion";
+import { Tip } from "./Tip";
 import type { ImportIssue, MatchIssueCode } from "../lib/streetMatch";
 
 const SEV_ORDER = { error: 0, warn: 1, info: 2 } as const;
@@ -144,9 +145,11 @@ export function ImportReportPanel() {
                 <Bug size={18} strokeWidth={2.2} /> Import măsurători / OSM
               </h2>
             </div>
-            <button type="button" className="icon-x" onClick={close} aria-label="Închide">
-              <X size={18} />
-            </button>
+            <Tip text="Închide">
+              <button type="button" className="icon-x" onClick={close} aria-label="Închide">
+                <X size={18} strokeWidth={2.25} />
+              </button>
+            </Tip>
           </div>
 
           <div className="import-kpis">

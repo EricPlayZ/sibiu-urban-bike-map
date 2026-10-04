@@ -23,7 +23,7 @@ export class CompassDialControl implements IControl {
 
         const dial = document.createElement("div");
         dial.className = "ubr-compass-dial";
-        dial.title = "Trage ca să rotești · tap pe N = nord";
+        dial.setAttribute("data-tip", "Trage ca să rotești · tap pe N = nord");
         dial.setAttribute("role", "slider");
         dial.setAttribute("aria-label", "Rotește harta");
         dial.innerHTML = `
@@ -33,7 +33,7 @@ export class CompassDialControl implements IControl {
         <span class="ubr-compass-tick ubr-compass-tick-s">S</span>
         <span class="ubr-compass-tick ubr-compass-tick-w">V</span>
       </div>
-      <button type="button" class="ubr-compass-hub" title="Resetează nordul" aria-label="Resetează nordul">N</button>
+      <button type="button" class="ubr-compass-hub" data-tip="Resetează nordul" aria-label="Resetează nordul">N</button>
     `;
 
         const hub = dial.querySelector(".ubr-compass-hub") as HTMLButtonElement;

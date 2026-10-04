@@ -1,14 +1,16 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
-import { Bike, CheckCheck, Eye, GraduationCap, Leaf, ParkingSquare, Ruler, Search, X } from "lucide-react";
+import { BUILDING_TYPES, buildingTypeMeta } from "../lib/buildingTypes";
+import { Bike, Building2, CheckCheck, Eye, GraduationCap, Leaf, ParkingSquare, Ruler, Search, X } from "lucide-react";
 import { DESKTOP_MEDIA } from "../lib/breakpoints";
 import { filterByQuery } from "../lib/listSearch";
 import { panelSpring, springExit } from "../lib/uiMotion";
 import { useApp } from "../store";
 import { FadeScrim } from "./FadeScrim";
+import { Tip } from "./Tip";
 import { schoolColor } from "../lib/schoolColors";
 import { shortSchoolName } from "../lib/isochroneStats";
-import { LAYER_META, layersMatchFocus } from "../lib/layers";
+import { LAYER_META, hideEmptyFocusOn, layersMatchFocus, type MapLayerId } from "../lib/layers";
 
 function useIsDesktop() {
   const [desktop, setDesktop] = useState(() =>
@@ -28,6 +30,7 @@ export function FiltersPanel() {
   const open = useApp((s) => s.filtersOpen);
   const filters = useApp((s) => s.filters);
   const layers = useApp((s) => s.layers);
+  const editMode = useApp((s) => s.editMode);
   const setLayer = useApp((s) => s.setLayer);
   const applyFocus = useApp((s) => s.applyFocus);
   const clearFocus = useApp((s) => s.clearFocus);
@@ -37,6 +40,8 @@ export function FiltersPanel() {
   const toggleAllNeighborhoods = useApp((s) => s.toggleAllNeighborhoods);
   const toggleSchool = useApp((s) => s.toggleSchool);
   const toggleAllSchools = useApp((s) => s.toggleAllSchools);
+  const toggleBuildingType = useApp((s) => s.toggleBuildingType);
+  const toggleAllBuildingTypes = useApp((s) => s.toggleAllBuildingTypes);
   const desktop = useIsDesktop();
   const [nbQuery, setNbQuery] = useState("");
   const [schoolQuery, setSchoolQuery] = useState("");
@@ -58,12 +63,15 @@ export function FiltersPanel() {
   const selected = new Set(filters.neighborhoods);
   const allOn = neighborhoodList.length > 0 && neighborhoodList.every((n) => selected.has(n.slug));
   const selectedCount = filters.neighborhoods.length;
+  const selectedBuildingTypes = new Set(filters.buildingTypes);
+  const allBuildingsOn = BUILDING_TYPES.every((t) => selectedBuildingTypes.has(t));
   const selectedSchools = new Set(filters.schools);
   const allSchoolsOn = schoolList.length > 0 && schoolList.every((s) => selectedSchools.has(s.slug));
   const schoolSelectedCount = filters.schools.length;
-  const hideEmptyOn = !layers.streetsBase;
-  const illegalOnlyOn = layersMatchFocus(layers, "illegalOnly");
-  const bikeOnlyOn = layersMatchFocus(layers, "bikeOnly");
+  const hideEmptyOn = hideEmptyFocusOn(layers);
+  const focusIgnore = editMode ? { ignore: ["streetsBase"] as MapLayerId[] } : undefined;
+  const illegalOnlyOn = layersMatchFocus(layers, "illegalOnly", focusIgnore);
+  const bikeOnlyOn = layersMatchFocus(layers, "bikeOnly", focusIgnore);
   const visibleNeighborhoods = useMemo(() => filterByQuery(neighborhoodList, nbQuery), [neighborhoodList, nbQuery]);
   const visibleSchools = useMemo(() => filterByQuery(schoolList, schoolQuery), [schoolList, schoolQuery]);
 
@@ -83,9 +91,11 @@ export function FiltersPanel() {
           >
             <div className="panel-head">
               <h2>Filtre & straturi</h2>
-              <button type="button" className="icon-x" onClick={() => useApp.getState().closeFilters()} aria-label="Închide">
-                <X size={18} strokeWidth={2.25} />
-              </button>
+              <Tip text="Închide">
+                <button type="button" className="icon-x" onClick={() => useApp.getState().closeFilters()} aria-label="Închide">
+                  <X size={18} strokeWidth={2.25} />
+                </button>
+              </Tip>
             </div>
 
             <div className="field-label">Straturi pe hartă</div>
@@ -123,6 +133,46 @@ export function FiltersPanel() {
               />
             </div>
 
+            <div className="field-label">Tipuri de clădiri</div>
+            <button
+              type="button"
+              className={`select-all-btn ${allBuildingsOn ? "on" : ""}`}
+              onClick={toggleAllBuildingTypes}
+              aria-pressed={allBuildingsOn}
+            >
+              <span className="select-all-icon" aria-hidden>
+                {allBuildingsOn ? <CheckCheck size={18} /> : <Building2 size={18} />}
+              </span>
+              <span className="select-all-copy">
+                <strong>{allBuildingsOn ? "Toate selectate" : "Selectează tot"}</strong>
+                <small>
+                  {filters.buildingTypes.length}/{BUILDING_TYPES.length} tipuri
+                </small>
+              </span>
+              <span className={`switch ${allBuildingsOn ? "on" : ""}`} aria-hidden>
+                <span className="switch-knob" />
+              </span>
+            </button>
+            <div className="chip-wrap">
+              {BUILDING_TYPES.map((t) => {
+                const meta = buildingTypeMeta(t);
+                const on = selectedBuildingTypes.has(t);
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`chip ${on ? "on" : ""}`}
+                    onClick={() => toggleBuildingType(t)}
+                    aria-pressed={on}
+                  >
+                    <span className="chip-swatch chip-swatch-bld" style={{ background: meta.color }} aria-hidden />
+                    <span className="chip-text">{meta.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {!layers.buildings ? <p className="filter-empty">Activează stratul „Clădiri” ca să vezi filtrul pe hartă.</p> : null}
+
             <div className="field-label">Cartiere</div>
             <FilterSearch value={nbQuery} onChange={setNbQuery} placeholder="Caută cartier…" label="Caută cartier" />
             <button
@@ -153,7 +203,6 @@ export function FiltersPanel() {
                   className={`chip ${selected.has(n.slug) ? "on" : ""}`}
                   onClick={() => toggleNeighborhood(n.slug)}
                   aria-pressed={selected.has(n.slug)}
-                  title={n.name}
                 >
                   <span className="chip-text">{n.name}</span>
                 </button>
@@ -185,18 +234,18 @@ export function FiltersPanel() {
 
             <div className="chip-wrap chip-wrap-schools">
               {visibleSchools.map((s) => (
-                <button
-                  key={s.slug}
-                  type="button"
-                  className={`chip chip-school ${selectedSchools.has(s.slug) ? "on" : ""}`}
-                  onClick={() => toggleSchool(s.slug)}
-                  aria-pressed={selectedSchools.has(s.slug)}
-                  aria-label={s.name}
-                  title={s.name}
-                >
-                  <span className="chip-swatch" style={{ background: schoolColor(s.slug) }} aria-hidden />
-                  <span className="chip-text">{shortSchoolName(s.name)}</span>
-                </button>
+                <Tip key={s.slug} text={s.name}>
+                  <button
+                    type="button"
+                    className={`chip chip-school ${selectedSchools.has(s.slug) ? "on" : ""}`}
+                    onClick={() => toggleSchool(s.slug)}
+                    aria-pressed={selectedSchools.has(s.slug)}
+                    aria-label={s.name}
+                  >
+                    <span className="chip-swatch" style={{ background: schoolColor(s.slug) }} aria-hidden />
+                    <span className="chip-text">{shortSchoolName(s.name)}</span>
+                  </button>
+                </Tip>
               ))}
             </div>
             {visibleSchools.length === 0 ? <p className="filter-empty">Nicio școală nu se potrivește</p> : null}
@@ -230,9 +279,11 @@ function FilterSearch({
         spellCheck={false}
       />
       {value ? (
-        <button type="button" className="filter-search-clear" onClick={() => onChange("")} aria-label="Șterge căutarea">
-          <X size={14} strokeWidth={2.4} />
-        </button>
+        <Tip text="Șterge căutarea">
+          <button type="button" className="filter-search-clear" onClick={() => onChange("")} aria-label="Șterge căutarea">
+            <X size={14} strokeWidth={2.4} />
+          </button>
+        </Tip>
       ) : null}
     </label>
   );

@@ -37,6 +37,9 @@ describe("buildingPopupHtml", () => {
     expect(buildingPopupHtml("bloc_4")).toMatch(/mp-value">Bloc 4 etaje</);
     expect(buildingPopupHtml("bloc_10")).toMatch(/mp-value">Bloc 10 etaje</);
     expect(buildingPopupHtml("bloc")).toMatch(/mp-value">Bloc 4 etaje</);
-    expect(buildingPopupHtml("apartments")).toMatch(/mp-value">Necunoscut</);
+    expect(buildingPopupHtml("apartments")).toMatch(/mp-value">Clădire publică \/ privată</);
+    expect(buildingPopupHtml("casa")).toContain('data-tip="Arată doar acest tip"');
+    expect(buildingPopupHtml("casa")).toContain("mp-act-icon");
+    expect(buildingPopupHtml("necunoscut")).not.toContain("Necunoscut");
   });
 });

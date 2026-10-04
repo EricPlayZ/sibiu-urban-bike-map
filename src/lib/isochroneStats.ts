@@ -73,6 +73,35 @@ export function formatStreetKm(n: number) {
   return `${formatStatNumber(n)} km străzi`;
 }
 
+export type ReachStatSectionId = "coverage" | "streets" | "neighborhoods" | "schools";
+
+export type ReachStatSection = {
+  id: ReachStatSectionId;
+  title: string;
+  summary: string;
+};
+
+/** Secțiunile de rezultat din panoul Acces. Închise implicit; rezumatul e numărul deja calculat. */
+export function reachStatSections(stats: IsochroneStats): ReachStatSection[] {
+  if (!stats.reachable) return [];
+  const neighborhoods = stats.reached.length;
+  const schools = stats.schoolCount;
+  return [
+    { id: "coverage", title: "Suprafață", summary: formatKm2(stats.areaKm2) },
+    { id: "streets", title: "Străzi", summary: formatStreetKm(stats.streetKm) },
+    {
+      id: "neighborhoods",
+      title: "Cartiere",
+      summary: `${neighborhoods} ${neighborhoods === 1 ? "cartier" : "cartiere"}`,
+    },
+    {
+      id: "schools",
+      title: "Școli",
+      summary: `${schools} ${schools === 1 ? "școală" : "școli"}`,
+    },
+  ];
+}
+
 const SCHOOL_PREFIXES = [
   "școala gimnazială ",
   "colegiul național ",

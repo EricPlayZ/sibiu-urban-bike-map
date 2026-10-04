@@ -74,7 +74,16 @@ export type ProfileGraph = {
   segs: Seg[];
   grid: Map<number, number[]>;
   cell: number;
+  /** 1 = segmentul face parte din rețeaua principală (nu dintr-o insulă izolată). */
+  segMain: Uint8Array;
 };
+
+/**
+ * Componentele conexe sub acest total de metri sunt „insule” (străzi rupte de restul rețelei în OSM,
+ * incinte, fundături izolate). Cursorul nu se agață de ele dacă există rețea principală în raza de snap,
+ * altfel izocrona ar apărea minusculă doar în anumite puncte.
+ */
+export const ISLAND_MAX_M = 3000;
 
 export type IsochroneEngine = {
   walk: ProfileGraph;
@@ -174,6 +183,8 @@ export function buildEngine(file: RoutingFile): IsochroneEngine {
 
   indexSegs(walk);
   indexSegs(bike);
+  markMainSegments(walk);
+  markMainSegments(bike);
   return { walk, bike };
 }
 
@@ -186,7 +197,36 @@ function emptyProfile(n: number, lng: Float64Array, lat: Float64Array): ProfileG
     segs: [],
     grid: new Map(),
     cell: 0.0014,
+    segMain: new Uint8Array(0),
   };
+}
+
+/** Marchează segmentele din componentele mari (union-find pe capetele segmentelor). */
+export function markMainSegments(g: ProfileGraph) {
+  const parent = new Int32Array(g.n);
+  for (let i = 0; i < g.n; i++) parent[i] = i;
+  const find = (i: number) => {
+    let x = i;
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  for (const s of g.segs) {
+    const a = find(s.a);
+    const b = find(s.b);
+    if (a !== b) parent[b] = a;
+  }
+  const total = new Float64Array(g.n);
+  for (const s of g.segs) total[find(s.a)] += s.lengthM;
+  let largest = 0;
+  for (let i = 0; i < g.n; i++) if (total[i] > largest) largest = total[i];
+  const threshold = Math.min(ISLAND_MAX_M, largest);
+  g.segMain = new Uint8Array(g.segs.length);
+  for (let i = 0; i < g.segs.length; i++) {
+    g.segMain[i] = total[find(g.segs[i].a)] >= threshold ? 1 : 0;
+  }
 }
 
 function addWay(g: ProfileGraph, ids: number[], profile: IsochroneProfile, highway: string, dir: -1 | 0 | 1) {
@@ -354,6 +394,7 @@ function snapToGraph(g: ProfileGraph, lng: number, lat: number, maxM: number): S
   const y1 = Math.floor((lat + padLat) / g.cell);
   const seen = new Set<number>();
   let best: Snap | null = null;
+  let bestMain: Snap | null = null;
   for (let x = x0; x <= x1; x++) {
     for (let y = y0; y <= y1; y++) {
       const list = g.grid.get(x * 200000 + y);
@@ -364,22 +405,23 @@ function snapToGraph(g: ProfileGraph, lng: number, lat: number, maxM: number): S
         const s = g.segs[i];
         const hit = projectSeg(lng, lat, g.lng[s.a], g.lat[s.a], g.lng[s.b], g.lat[s.b]);
         if (hit.distM > maxM) continue;
-        if (!best || hit.distM < best.distM) {
-          best = {
-            a: s.a,
-            b: s.b,
-            t: hit.t,
-            lng: hit.lng,
-            lat: hit.lat,
-            distM: hit.distM,
-            lengthM: s.lengthM,
-            speedMps: s.speedMps,
-          };
-        }
+        const snap: Snap = {
+          a: s.a,
+          b: s.b,
+          t: hit.t,
+          lng: hit.lng,
+          lat: hit.lat,
+          distM: hit.distM,
+          lengthM: s.lengthM,
+          speedMps: s.speedMps,
+        };
+        if (!best || hit.distM < best.distM) best = snap;
+        if (g.segMain[i] && (!bestMain || hit.distM < bestMain.distM)) bestMain = snap;
       }
     }
   }
-  return best;
+  // Insulele izolate câștigă doar când nu există rețea principală în raza de snap.
+  return bestMain ?? best;
 }
 
 function heapPush(h: { t: number; n: number }[], x: { t: number; n: number }) {

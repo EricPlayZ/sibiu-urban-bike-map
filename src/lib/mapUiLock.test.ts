@@ -22,17 +22,22 @@ describe("isMapUiLocked", () => {
     expect(isMapUiLocked(flags())).toBe(false);
   });
 
-  it("locks for filters, stats, popovers, sheets, and login", () => {
+  it("locks filters, search, the detail sheet, team login, and the csv editor", () => {
     expect(isMapUiLocked(flags({ filtersOpen: true }))).toBe(true);
-    expect(isMapUiLocked(flags({ statsOpen: true }))).toBe(true);
-    expect(isMapUiLocked(flags({ basemapOpen: true }))).toBe(true);
-    expect(isMapUiLocked(flags({ themeOpen: true }))).toBe(true);
-    expect(isMapUiLocked(flags({ editsOpen: true }))).toBe(true);
-    expect(isMapUiLocked(flags({ importReportOpen: true }))).toBe(true);
     expect(isMapUiLocked(flags({ csvEditorOpen: true }))).toBe(true);
     expect(isMapUiLocked(flags({ teamLoginOpen: true }))).toBe(true);
     expect(isMapUiLocked(flags({ sheetOpen: true }))).toBe(true);
     expect(isMapUiLocked(flags({ searchOpen: true }))).toBe(true);
+  });
+
+  it("leaves the map free while stats, theme, basemap, edits, and import are open", () => {
+    expect(isMapUiLocked(flags({ statsOpen: true }))).toBe(false);
+    expect(isMapUiLocked(flags({ basemapOpen: true }))).toBe(false);
+    expect(isMapUiLocked(flags({ themeOpen: true }))).toBe(false);
+    expect(isMapUiLocked(flags({ editsOpen: true }))).toBe(false);
+    expect(isMapUiLocked(flags({ importReportOpen: true }))).toBe(false);
+    expect(isMapUiLocked(flags({ statsOpen: true, editsOpen: true, themeOpen: true }))).toBe(false);
+    expect(isMapUiLocked(flags({ statsOpen: true, filtersOpen: true }))).toBe(true);
   });
 });
 

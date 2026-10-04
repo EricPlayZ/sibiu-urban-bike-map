@@ -2,7 +2,7 @@ import { List } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useApp } from "../store";
-import { mapLegendItems } from "../lib/mapLegend";
+import { legendLayerId, mapLegendItems, type LegendSwatch } from "../lib/mapLegend";
 import { popSpring, springExit } from "../lib/uiMotion";
 
 export function MapLegend() {
@@ -29,7 +29,36 @@ export function MapLegend() {
     measurements,
     seedMeasurements,
     neighborhoods: filters.neighborhoods,
+    buildingTypes: filters.buildingTypes,
   });
+  const toggleBuildingType = useApp((s) => s.toggleBuildingType);
+  const toggleSchool = useApp((s) => s.toggleSchool);
+  const setLayer = useApp((s) => s.setLayer);
+
+  const onLegendItem = (item: LegendSwatch) => {
+    if (item.filter === "building") toggleBuildingType(item.key);
+    else if (item.filter === "school") toggleSchool(item.key);
+    else if (item.filter === "layer") {
+      const layerId = legendLayerId(item.key);
+      if (layerId) setLayer(layerId, Boolean(item.off));
+    }
+  };
+
+  const renderItem = (item: LegendSwatch) => {
+    const on = !item.off;
+    return (
+      <button
+        key={item.key}
+        type="button"
+        className={`map-legend-item map-legend-item-btn ${on ? "" : "is-off"}`}
+        aria-pressed={on}
+        onClick={() => onLegendItem(item)}
+      >
+        <i style={{ background: item.color }} />
+        {item.label}
+      </button>
+    );
+  };
 
   useLayoutEffect(() => {
     const body = bodyRef.current;
@@ -66,24 +95,14 @@ export function MapLegend() {
             <div ref={bodyRef} className={scrollable ? "map-legend-body is-scrollable" : "map-legend-body"}>
               {layerItems.length > 0 && (
                 <div className="map-legend-list">
-                  {layerItems.map((item) => (
-                    <span key={item.key} className="map-legend-item">
-                      <i style={{ background: item.color }} />
-                      {item.label}
-                    </span>
-                  ))}
+                  {layerItems.map(renderItem)}
                 </div>
               )}
-              {schools.length > 0 && (
+              {(layers.schoolAssign || layers.schoolMarkers) && schools.length > 0 && (
                 <div className="map-legend-schools">
                   {layerItems.length > 0 && <div className="map-legend-kicker">Școli</div>}
                   <div className="map-legend-list map-legend-list-schools">
-                    {schools.map((item) => (
-                      <span key={item.key} className="map-legend-item">
-                        <i style={{ background: item.color }} />
-                        {item.label}
-                      </span>
-                    ))}
+                    {schools.map(renderItem)}
                   </div>
                 </div>
               )}

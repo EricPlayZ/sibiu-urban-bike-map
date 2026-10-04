@@ -1,4 +1,5 @@
 import type { ExpressionSpecification, FilterSpecification, GeoJSONSource, Map } from "maplibre-gl";
+import { isMobileViewport } from "./breakpoints";
 import { glowCollection } from "./glowRibbon";
 import {
   boundsOfFeatures,
@@ -104,13 +105,14 @@ export function applySearchDim(map: Map, hit: SearchHit | null) {
   const nbFillFull = darkBg ? 0.12 : 0.07;
   const nbHaloFull = darkBg ? 0.65 : 0.85;
   const streetKeep = hit?.kind === "street" ? uniqueProp(hit, "sid") : [];
+  const bldKeep = hit ? uniqueProp(hit, "bid") : [];
   const nbKeep = hit?.kind === "neighborhood" ? uniqueProp(hit, "slug") : [];
   const dimOn = Boolean(hit);
 
   const streetOpacity = (full: number) => {
     if (!dimOn) return full;
     if (hit?.kind !== "street") return DIM_STREET;
-    if (!streetKeep.length) return full;
+    if (!streetKeep.length) return bldKeep.length ? DIM_STREET : full;
     return keepOrDim(full, streetKeep, "sid", DIM_STREET);
   };
 
@@ -132,8 +134,20 @@ export function applySearchDim(map: Map, hit: SearchHit | null) {
   setPaint(map, "nb-line", "line-opacity", nbLine);
   setPaint(map, "nb-label", "text-opacity", nbLabel);
 
-  setPaint(map, "bld-fill", "fill-opacity", dimOn ? DIM_BLD_FILL : 0.58);
-  setPaint(map, "bld-line", "line-opacity", dimOn ? DIM_BLD_LINE : 0.35);
+  const bldFillFull = 0.58;
+  const bldLineFull = 0.35;
+  setPaint(
+    map,
+    "bld-fill",
+    "fill-opacity",
+    !dimOn ? bldFillFull : bldKeep.length ? keepOrDim(bldFillFull, bldKeep, "bid", DIM_BLD_FILL) : DIM_BLD_FILL,
+  );
+  setPaint(
+    map,
+    "bld-line",
+    "line-opacity",
+    !dimOn ? bldLineFull : bldKeep.length ? keepOrDim(bldLineFull, bldKeep, "bid", DIM_BLD_LINE) : DIM_BLD_LINE,
+  );
 
   for (const id of STREET_DIM_LAYERS) {
     if (!map.getLayer(id)) continue;
@@ -371,6 +385,10 @@ export function flyToSearchHit(map: Map, hit: SearchHit) {
   const reduced = prefersReducedMotion();
   const duration = reduced ? 0 : hit.kind === "school" ? 1100 : 1380;
   const padding = searchCameraPadding();
+  if (hit.quiet) {
+    if (isMobileViewport()) padding.bottom = Math.max(padding.bottom, Math.round(window.innerHeight * 0.48));
+    else padding.right = 340;
+  }
   const easing = easeOutCubic;
   const bounds = boundsOfFeatures(hit.features);
 

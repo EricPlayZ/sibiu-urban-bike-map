@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { loginFailureMessage } from "../lib/teamApi";
 import { fadeExit, panelSpring } from "../lib/uiMotion";
 import { useApp } from "../store";
+import { Tip } from "./Tip";
 
 export function TeamLogin() {
   const open = useApp((s) => s.teamLoginOpen);
@@ -61,9 +62,11 @@ export function TeamLogin() {
           >
             <div className="team-login-head">
               <h1 id="team-login-title">Acces editare</h1>
-              <button type="button" className="icon-x" onClick={closeTeamLogin} aria-label="Închide">
-                <X size={18} strokeWidth={2.25} />
-              </button>
+              <Tip text="Închide">
+                <button type="button" className="icon-x" onClick={closeTeamLogin} aria-label="Închide">
+                  <X size={18} strokeWidth={2.25} />
+                </button>
+              </Tip>
             </div>
         <form className="team-login-form" onSubmit={(e) => void onSubmit(e)}>
           <label className="field">

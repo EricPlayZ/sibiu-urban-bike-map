@@ -9,6 +9,7 @@ import { CsvEditorPanel } from "./components/CsvEditorPanel";
 import { DetailSheet } from "./components/DetailSheet";
 import { ImportReportPanel } from "./components/ImportReportPanel";
 import { IsochronePanel } from "./components/IsochronePanel";
+import { SplitToolbar } from "./components/SplitToolbar";
 import { Loader, MobileDock, Toast } from "./components/Chrome";
 import { TeamLogin } from "./components/TeamLogin";
 import { useApp } from "./store";
@@ -45,6 +46,7 @@ export default function App() {
       <CsvEditorPanel />
       <ImportReportPanel />
       <DetailSheet />
+      <SplitToolbar />
       <MobileDock />
       <Toast />
       <Loader />

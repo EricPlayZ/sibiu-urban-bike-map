@@ -17,6 +17,9 @@ describe("building edits file", () => {
     expect(parsed.edits.b_osm_2).toBeUndefined();
     expect(parsed.edits.b_osm_3).toEqual({ type: "bloc_4" });
     expect(Object.hasOwn(parsed.edits, "constructor")).toBe(false);
+    const legacy = parseBuildingEditsFile({ version: 1, edits: { a: { type: "necunoscut" }, b: { type: "altceva" } } });
+    expect(legacy.edits.a).toEqual({ type: "public_business" });
+    expect(legacy.edits.b).toEqual({ type: "public_business" });
     const round = parseBuildingEditsFile(JSON.parse(serializeBuildingEditsFile(parsed)));
     expect(round.edits.b_osm_1).toEqual({ type: "casa" });
   });

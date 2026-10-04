@@ -14,10 +14,10 @@ export function FadeScrim({
     <motion.button
       type="button"
       className={className}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      initial={{ opacity: 0, pointerEvents: "none" }}
+      animate={{ opacity: 1, pointerEvents: "auto" }}
       exit={fadeExit()}
-      transition={overlayTransition}
+      transition={{ ...overlayTransition, pointerEvents: { duration: 0 } }}
       onClick={onClick}
       aria-label={label}
     />

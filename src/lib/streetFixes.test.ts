@@ -34,6 +34,7 @@ const FIXTURE_PARTS = [
   { neighborhoodSlug: "strand2", text: readFixture("strand2") },
   { neighborhoodSlug: "terezian", text: readFixture("terezian") },
   { neighborhoodSlug: "valea_aurie", text: readFixture("valea_aurie") },
+  { neighborhoodSlug: "centru", text: readFixture("centru") },
   { neighborhoodSlug: "hipodrom", text: readFixture("hipodrom1") },
   { neighborhoodSlug: "hipodrom", text: readFixture("hipodrom2") },
   { neighborhoodSlug: "hipodrom", text: readFixture("hipodrom3") },

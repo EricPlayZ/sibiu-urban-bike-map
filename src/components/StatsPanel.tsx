@@ -12,7 +12,9 @@ import {
   streetHasSafeBikeLane,
 } from "../lib/space";
 import { streetSchoolSlugs } from "../lib/schoolCatchment";
+import { streetMatchesNeighborhood } from "../lib/mapFilters";
 import { panelSpring, springExit } from "../lib/uiMotion";
+import { Tip } from "./Tip";
 
 function formatKm(meters: number) {
   const km = meters / 1000;
@@ -34,8 +36,8 @@ export function StatsPanel() {
   const selected = new Set(filters.neighborhoods);
   const selectedSchools = new Set(filters.schools);
   const feats = (streets?.features || []).filter((f) => {
-    const cartier = String((f.properties as { cartier?: string })?.cartier || "").trim();
-    return Boolean(cartier) && selected.has(cartier);
+    const cartier = String((f.properties as { cartier?: string })?.cartier || "");
+    return streetMatchesNeighborhood(cartier, selected);
   });
 
   const resolved = feats.map((f) => {
@@ -80,9 +82,11 @@ export function StatsPanel() {
         >
           <div className="panel-head">
             <h2>Statistici</h2>
-            <button type="button" className="icon-x" onClick={() => useApp.getState().closeStats()} aria-label="Închide">
-              <X size={18} strokeWidth={2.25} />
-            </button>
+            <Tip text="Închide">
+              <button type="button" className="icon-x" onClick={() => useApp.getState().closeStats()} aria-label="Închide">
+                <X size={18} strokeWidth={2.25} />
+              </button>
+            </Tip>
           </div>
 
           <div className="stat-hero">

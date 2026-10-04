@@ -1,4 +1,5 @@
-import { buildingTypeMeta } from "./buildingTypes";
+import { BUILDING_TYPES, buildingTypeMeta, coerceBuildingType } from "./buildingTypes";
+import type { NeighborhoodInfo } from "./neighborhoodInfo";
 import { BIKE_DOOR_LABEL, BIKE_SAFE_LABEL } from "./layers";
 import { streetAssignedToSchool, streetSchoolSlugs } from "./schoolCatchment";
 import { schoolColor } from "./schoolColors";
@@ -38,7 +39,16 @@ const ICONS = {
   building: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V5.5A1.5 1.5 0 0 1 5.5 4H14a1.5 1.5 0 0 1 1.5 1.5V21M10 21V11h8.5A1.5 1.5 0 0 1 20 12.5V21M8 8h.01M8 12h.01M12 8h.01M12 12h.01M16 14h.01M16 17h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
   tower: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 21V4.5A1.5 1.5 0 0 1 8.5 3h7A1.5 1.5 0 0 1 17 4.5V21M7 21h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 7h.01M14 7h.01M10 11h.01M14 11h.01M10 15h.01M14 15h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
   package: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 7.5v9L12 21 4 16.5v-9L12 3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 12 20 7.5M12 12v9M12 12 4 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+  store: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5 5.5 4h13L20 9.5M4 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 6 0 2.5 2.5 0 0 0 5 0M5.5 12.5V20h13v-7.5M10 20v-4.5h4V20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   help: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.6 9.2a2.6 2.6 0 1 1 3.7 2.4c-.7.4-1.3.9-1.3 1.9M12 17.2h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+  layers: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5ZM3 12.5l9 5 9-5M3 16.5l9 5 9-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  ruler: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5 15.5 20 20 15.5 8.5 4 4 8.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7.5 11.5 9 10M10.5 13.5 12 12M13.5 15.5 15 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+  list: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M4.5 6h.01M4.5 12h.01M4.5 18h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+  segment: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18 9 6l3 6 3-4 5 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  eye: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12.5s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5-9.5-6.5-9.5-6.5Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12.5" r="2.75" fill="none" stroke="currentColor" stroke-width="2"/></svg>`,
+  eyeOff: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4.5 20.5 22M10.2 10.7a2.8 2.8 0 0 0 3.8 3.8M6.4 6.9C4.2 8.4 2.8 10.4 2.5 12.5c0 0 3.5 6.5 9.5 6.5 1.6 0 3-.4 4.2-1M17.6 17.1c2.2-1.5 3.6-3.5 3.9-5.6 0 0-3.5-6.5-9.5-6.5-1.1 0-2.1.2-3 .5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+  funnel: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6.5 8v5.5L10 20v-7L4 5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
+  coverage: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16M8 15V9M12 17V7M16 13v-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
 } as const;
 
 type RowTone = "bike" | "illegal" | "reserved" | "school" | "muted" | "off";
@@ -72,7 +82,7 @@ function spaceBreakdownHtml(m?: Measurement | null, props?: Record<string, unkno
     ].filter((p) => p.v > 0.005);
 
     const bar = parts
-      .map((p) => `<span class="mp-seg" style="width:${(p.v * 100).toFixed(1)}%;background:${p.color}" title="${escapeHtml(p.label)} ${pct(p.v)}"></span>`)
+      .map((p) => `<span class="mp-seg" style="width:${(p.v * 100).toFixed(1)}%;background:${p.color}" data-tip="${escapeHtml(p.label)} ${pct(p.v)}"></span>`)
       .join("");
     const legs = parts.map((p) => `<span><i style="background:${p.color}"></i>${escapeHtml(p.label)} ${pct(p.v)}</span>`).join("");
 
@@ -155,7 +165,7 @@ export function streetPopupHtml(
 
 /** SVG marker școală — culoarea e cea a arondării pe hartă. */
 export function schoolMarkerHtml(name: string, color = "#5b6cff") {
-  return `<span class="school-pin" style="--school-c:${escapeHtml(color)}" title="${escapeHtml(name)}">
+  return `<span class="school-pin" style="--school-c:${escapeHtml(color)}" data-tip="${escapeHtml(name)}">
     <span class="school-pin-glow" aria-hidden="true"></span>
     <span class="school-pin-core" aria-hidden="true">
       <svg viewBox="0 0 24 24" width="18" height="18"><path d="M3 10.5 12 5l9 5.5-9 5.5L3 10.5Z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><path d="M7 13v4.2c2 1.4 8 1.4 10 0V13M19 11.5V16.5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -164,11 +174,46 @@ export function schoolMarkerHtml(name: string, color = "#5b6cff") {
   </span>`;
 }
 
-/** Popup MapLibre pentru clădire (vizualizare — fără placeholder foto). */
-export function buildingPopupHtml(type: string) {
-  const current = buildingTypeMeta(type);
+export type PopupAction = {
+  act: "only-nb" | "hide-nb" | "only-school" | "hide-school" | "only-bldg" | "hide-bldg";
+  id: string;
+  tip: string;
+};
 
-  return `<div class="map-popup map-popup-bldg">
+/** Butoane de filtrare din popup; click-ul e preluat prin delegare în MapView (`data-ubr-act`). */
+function actionsHtml(actions: PopupAction[]) {
+  if (!actions.length) return "";
+  const btns = actions
+    .map((a) => {
+      const only = a.act.startsWith("hide") ? false : true;
+      const icon = only ? ICONS.funnel : ICONS.eyeOff;
+      const cls = only ? "mp-act-only" : "mp-act-hide";
+      return `<button type="button" class="mp-act mp-act-icon ${cls}" data-ubr-act="${a.act}" data-ubr-id="${escapeHtml(a.id)}" data-tip="${escapeHtml(a.tip)}" aria-label="${escapeHtml(a.tip)}">${icon}</button>`;
+    })
+    .join("");
+  return `<div class="mp-actions">${btns}</div>`;
+}
+
+/** Secțiune pliabilă: informația nu aglomerează popup-ul dacă nu o vrei. */
+function fold(title: string, summary: string, body: string, open = false) {
+  return `<details class="mp-fold"${open ? " open" : ""}><summary><span class="mp-fold-title">${escapeHtml(title)}</span><span class="mp-fold-sum">${escapeHtml(summary)}</span></summary><div class="mp-fold-body">${body}</div></details>`;
+}
+
+function statLine(label: string, value: string, icon: keyof typeof ICONS, tone: RowTone = "muted", color?: string) {
+  const icoStyle = color ? ` style="color:${escapeHtml(color)}"` : "";
+  return `<div class="mp-row mp-${tone} mp-stat-row"><span class="mp-ico"${icoStyle}>${ICONS[icon]}</span><div class="mp-copy"><span class="mp-label">${escapeHtml(label)}</span><span class="mp-value">${escapeHtml(value)}</span></div></div>`;
+}
+
+/** Popup MapLibre pentru clădire (vizualizare — fără placeholder foto). */
+export function buildingPopupHtml(type: string, below = "") {
+  const current = buildingTypeMeta(type);
+  const typeId = coerceBuildingType(type);
+  const actions = actionsHtml([
+    { act: "only-bldg", id: typeId, tip: "Arată doar acest tip" },
+    { act: "hide-bldg", id: typeId, tip: "Ascunde acest tip" },
+  ]);
+
+  return `<div class="map-popup-stack"><div class="map-popup map-popup-bldg">
     <div class="mp-body">
       <strong class="mp-title">Clădire</strong>
       <div class="mp-chips">
@@ -183,8 +228,9 @@ export function buildingPopupHtml(type: string) {
           </div>
         </div>
       </div>
+      ${actions}
     </div>
-  </div>`;
+  </div>${below ? `<div class="mp-stack-sep" aria-hidden="true"></div>${below}` : ""}</div>`;
 }
 
 export function assignFlagOffsets(p: Record<string, unknown>, opts: { includeSchool: boolean; includeEdit?: boolean }) {
@@ -234,6 +280,12 @@ export function schoolPopupHtml(
   const bike = assigned.filter((f) => streetHasBikeLane(f.properties as Record<string, unknown>)).length;
   const illegal = assigned.filter((f) => featureHasIllegalParking(f.properties as Record<string, unknown>)).length;
 
+  const details = `<div class="mp-list">
+        ${row("school", "school", "Străzi arondate", String(assigned.length))}
+        ${row(bike ? "bike" : "off", "bike", "Cu pistă biciclete", String(bike))}
+        ${row(illegal ? "illegal" : "off", "illegal", "Cu parcare ilegală", String(illegal))}
+      </div>`;
+
   return `<div class="map-popup">
     <div class="mp-body">
       <strong class="mp-title">${escapeHtml(title)}</strong>
@@ -241,20 +293,101 @@ export function schoolPopupHtml(
         <span class="mp-chip" style="--c:${schoolColor(slug)}">Școală</span>
         <span class="mp-chip" style="--c:#5b6cff">${assigned.length} străzi</span>
       </div>
-      <div class="mp-list">
-        ${row("school", "school", "Străzi arondate", String(assigned.length))}
-        ${row(bike ? "bike" : "off", "bike", "Cu pistă biciclete", String(bike))}
-        ${row(illegal ? "illegal" : "off", "illegal", "Cu parcare ilegală", String(illegal))}
-      </div>
+      ${fold("Străzi arondate", `${assigned.length} străzi`, details)}
+      ${slug ? actionsHtml([
+        { act: "only-school", id: slug, tip: "Arată doar această școală" },
+        { act: "hide-school", id: slug, tip: "Ascunde această școală" },
+      ]) : ""}
     </div>
   </div>`;
 }
 
-export function neighborhoodPopupHtml(name: string) {
-  return `<div class="map-popup">
+const fmtKm = (v: number) => `${v.toLocaleString("ro-RO", { maximumFractionDigits: 2 })} km`;
+const fmtPct = (part: number, total: number) => (total > 0 ? `${Math.round((part / total) * 100)}%` : "—");
+
+/**
+ * Popup de cartier. Fără `info` (ex. date încă neîncărcate) arată doar numele; cu `info`, secțiuni pliabile.
+ * Filtrul nu se schimbă niciodată din simplul click pe cartier — doar din butoanele de jos.
+ */
+export function neighborhoodPopupHtml(name: string, info?: NeighborhoodInfo | null, slug?: string) {
+  const id = slug || info?.slug || "";
+  const actions = id
+    ? actionsHtml([
+        { act: "only-nb", id, tip: "Arată doar acest cartier" },
+        { act: "hide-nb", id, tip: "Ascunde acest cartier" },
+      ])
+    : "";
+  if (!info) {
+    return `<div class="map-popup">
     <div class="mp-body">
       <strong class="mp-title">${escapeHtml(name)}</strong>
       <div class="mp-chips"><span class="mp-chip" style="--c:${LAYER_COLORS.base}">Cartier</span></div>
+      ${actions}
+    </div>
+  </div>`;
+  }
+
+  const s = info.streets;
+  const cov = info.coverage;
+  const streetsBody = `<div class="mp-list mp-stats">
+      ${statLine("Segmente de stradă", String(s.segments), "segment")}
+      ${statLine("Străzi (după nume)", String(s.names), "list")}
+      ${statLine("Lungime totală", fmtKm(s.km), "ruler")}
+      ${statLine(BIKE_SAFE_LABEL, fmtKm(s.bikeSafeKm), "bike", "bike", LAYER_COLORS.bike)}
+      ${statLine(BIKE_DOOR_LABEL, fmtKm(s.bikeDoorKm), "bike", "bike", LAYER_COLORS.bikeDoor)}
+      ${statLine("Parcare ilegală pe trotuar", fmtKm(s.illegalKm), "illegal", "illegal", LAYER_COLORS.illegal)}
+      ${statLine("Parcare amenajată pe trotuar", fmtKm(s.reservedKm), "reserved", "reserved", LAYER_COLORS.reserved)}
+      ${statLine("Segmente arondate la școli", String(s.schoolAssigned), "school", "school", "#5b6cff")}
+    </div>`;
+
+  const schoolsBody = info.schools.length
+    ? `<div class="mp-list">${info.schools
+        .map((sc) => {
+          const label = escapeHtml(sc.name);
+          const color = schoolColor(sc.slug);
+          return `<div class="mp-row mp-school"><span class="mp-ico">${ICONS.school}</span><div class="mp-copy"><span class="mp-label">Școală</span><span class="mp-value"><span class="mp-school-name" style="--c:${color}">${label}</span></span></div></div>`;
+        })
+        .join("")}</div>`
+    : `<p class="mp-note">Nicio școală marcată în acest cartier.</p>`;
+
+  let buildingsSummary = "neîncărcate";
+  let buildingsBody = `<p class="mp-note">Clădirile nu sunt încărcate încă.</p>`;
+  if (info.buildings) {
+    const b = info.buildings;
+    buildingsSummary = `${b.total.toLocaleString("ro-RO")} clădiri`;
+    buildingsBody = `<div class="mp-list">${BUILDING_TYPES.map((t) => {
+      const meta = buildingTypeMeta(t);
+      const icon = meta.icon in ICONS ? (meta.icon as keyof typeof ICONS) : "building";
+      return statLine(
+        meta.label,
+        `${b.byType[t].toLocaleString("ro-RO")} · ${fmtPct(b.byType[t], b.total)}`,
+        icon,
+        "muted",
+        meta.color
+      );
+    }).join("")}</div>`;
+  }
+
+  const coverageBody = `<div class="mp-meter" role="img" aria-label="Acoperire măsurători ${fmtPct(cov.measuredSegments, cov.totalSegments)}"><span style="width:${cov.totalSegments ? Math.round((cov.measuredSegments / cov.totalSegments) * 100) : 0}%"></span></div>
+    <div class="mp-list">
+      ${statLine("Segmente cu date", `${cov.measuredSegments} din ${cov.totalSegments}`, "segment")}
+      ${statLine("Lungime cu date", `${fmtKm(cov.measuredKm)} din ${fmtKm(cov.totalKm)}`, "ruler")}
+      ${statLine("Segmente cu lățimi complete", String(cov.withWidths), "layers")}
+      ${statLine("Editate de echipă", String(cov.edited), "coverage", "muted", LAYER_COLORS.edited)}
+    </div>`;
+
+  return `<div class="map-popup map-popup-nb">
+    <div class="mp-body">
+      <strong class="mp-title">${escapeHtml(info.name)}</strong>
+      <div class="mp-chips">
+        <span class="mp-chip" style="--c:${LAYER_COLORS.base}">Cartier</span>
+        <span class="mp-chip" style="--c:${LAYER_COLORS.edited}">${fmtPct(cov.measuredSegments, cov.totalSegments)} acoperit</span>
+      </div>
+      ${fold("Străzi", fmtKm(s.km), streetsBody)}
+      ${fold("Școli", String(info.schools.length), schoolsBody)}
+      ${fold("Clădiri", buildingsSummary, buildingsBody)}
+      ${fold("Acoperire măsurători", fmtPct(cov.measuredSegments, cov.totalSegments), coverageBody)}
+      ${actions}
     </div>
   </div>`;
 }
