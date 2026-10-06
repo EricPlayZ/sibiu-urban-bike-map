@@ -28,6 +28,7 @@ import { neighborhoodLabelCollection } from "../lib/geoAssign";
 import { hitAnchor, hitPrimaryFeature, type SearchHit } from "../lib/mapSearch";
 import { isMobileViewport } from "../lib/breakpoints";
 import { hitRadiusPx, queryClosestFeature, queryRenderedNear } from "../lib/mapHit";
+import { setActiveMap } from "../lib/activeMap";
 import { explodeSchoolColorFeatures, schoolColor } from "../lib/schoolColors";
 import {
   computeIsochrones,
@@ -318,6 +319,9 @@ export function MapView() {
       fadeDuration: 0,
       antialias: false,
       maxPitch: 60,
+      maxCanvasSize: [8192, 8192],
+      // Needed so the print export can read the WebGL canvas.
+      preserveDrawingBuffer: true,
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false, visualizePitch: false }), "bottom-right");
     map.addControl(new CompassDialControl(), "bottom-right");
@@ -337,6 +341,7 @@ export function MapView() {
     const chase = enableChasingWheelZoom(map);
     chaseZoomRef.current = chase;
     mapRef.current = map;
+    setActiveMap(map);
     appliedBasemap.current = initial;
     if (isMapUiLocked(useApp.getState())) {
       chase.abort();
@@ -357,6 +362,7 @@ export function MapView() {
       stopSearchGlow(map);
       streetPopupRef.current?.remove();
       streetPopupRef.current = null;
+      setActiveMap(null);
       map.remove();
       mapRef.current = null;
       appliedBasemap.current = null;

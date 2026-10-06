@@ -18,6 +18,7 @@ import {
   Monitor,
   GraduationCap,
   Bug,
+  FileDown,
   Table2,
   Timer,
   Users,
@@ -33,6 +34,7 @@ import type { BasemapId } from "../lib/space";
 import type { UiTheme } from "../lib/theme";
 import { layersMatchPreset } from "../lib/layers";
 import { Tip } from "./Tip";
+import { openPrintDialog } from "./PrintDialog";
 
 type TeamRow = PresenceUser & { self: boolean };
 
@@ -232,6 +234,12 @@ export function TopBar() {
             <button type="button" className={`chip-btn ${themeOpen ? "on" : ""}`} onClick={toggleTheme} aria-label="Temă" aria-pressed={themeOpen}>
               {uiTheme === "dark" ? <Moon size={16} /> : uiTheme === "light" ? <Sun size={16} /> : <Monitor size={16} />}
               <span className="chip-label" aria-hidden>Temă</span>
+            </button>
+          </Tip>
+          <Tip text="PDF pentru tipar">
+            <button type="button" className="chip-btn" onClick={openPrintDialog} aria-label="PDF pentru tipar">
+              <FileDown size={16} strokeWidth={2.25} aria-hidden />
+              <span className="chip-label" aria-hidden>PDF</span>
             </button>
           </Tip>
           <Tip text="Stats">

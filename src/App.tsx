@@ -12,6 +12,7 @@ import { IsochronePanel } from "./components/IsochronePanel";
 import { SplitToolbar } from "./components/SplitToolbar";
 import { Loader, MobileDock, Toast } from "./components/Chrome";
 import { TeamLogin } from "./components/TeamLogin";
+import { PrintDialog } from "./components/PrintDialog";
 import { useApp } from "./store";
 import { applyDocumentTheme } from "./lib/theme";
 
@@ -51,6 +52,7 @@ export default function App() {
       <Toast />
       <Loader />
       <TeamLogin />
+      <PrintDialog />
     </div>
   );
 }

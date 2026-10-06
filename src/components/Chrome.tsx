@@ -1,10 +1,11 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef } from "react";
 import { fadeExit, panelSpring, springExit } from "../lib/uiMotion";
-import { Bike, Building2, Bug, ChartColumn, Filter, GraduationCap, Layers, ListTree, Monitor, Moon, Pencil, Sun, Table2, Timer } from "lucide-react";
+import { Bike, Building2, Bug, ChartColumn, FileDown, Filter, GraduationCap, Layers, ListTree, Monitor, Moon, Pencil, Sun, Table2, Timer } from "lucide-react";
 import { countSavedEdits } from "../lib/editBundle";
 import { useApp } from "../store";
 import { layersMatchPreset } from "../lib/layers";
+import { openPrintDialog } from "./PrintDialog";
 
 export function Toast() {
   const toast = useApp((s) => s.toast);
@@ -132,6 +133,10 @@ export function MobileDock() {
         <button type="button" className={basemapOpen ? "on" : ""} onClick={toggleBasemap} aria-pressed={basemapOpen}>
           <Layers size={18} strokeWidth={2.25} />
           <span>Hartă</span>
+        </button>
+        <button type="button" onClick={openPrintDialog} aria-label="PDF pentru tipar">
+          <FileDown size={18} strokeWidth={2.25} />
+          <span>PDF</span>
         </button>
         <button
           type="button"

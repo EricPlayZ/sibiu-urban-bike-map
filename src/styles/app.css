@@ -657,7 +657,11 @@ html[data-theme="dark"] .atmosphere {
 .icon-x:focus-visible,
 .maplibregl-ctrl-group button:focus-visible,
 .maplibregl-ctrl-attrib-button:focus-visible,
-.ubr-compass-hub:focus-visible {
+.ubr-compass-hub:focus-visible,
+.print-choices button:focus-visible,
+.print-actions .btn:focus-visible,
+.print-full:focus-visible,
+.print-custom-scale input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -4546,6 +4550,258 @@ html[data-theme="dark"] .csv-table th.csv-col-flag-src {
   margin: 6px 0 0;
   font-size: 12px;
   line-height: 1.35;
+}
+
+.print-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(10, 18, 14, 0.28);
+  backdrop-filter: blur(2px);
+}
+.print-sheet {
+  width: min(920px, 100%);
+  max-height: 92dvh;
+  overflow: auto;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 16px 14px;
+}
+.print-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.print-head h2 {
+  margin: 0;
+  font: 700 20px var(--font-display);
+}
+.print-head .sub {
+  margin: 4px 0 0;
+}
+.print-field {
+  border: 0;
+  margin: 14px 0 0;
+  padding: 0;
+  min-width: 0;
+}
+.print-field legend {
+  font: 600 11px var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+  padding: 0;
+}
+.print-choices {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 4%, var(--panel));
+  overflow-x: auto;
+}
+.print-choices button {
+  flex: 1 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  min-height: 36px;
+  padding: 0 8px;
+  font: 600 13px var(--font-body);
+  cursor: pointer;
+}
+.print-choices button.on {
+  background: var(--accent);
+  color: #fff;
+}
+.print-error {
+  margin: 12px 0 0;
+  color: var(--accent-2);
+  font: 600 13px/1.4 var(--font-body);
+}
+.print-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+.print-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font: 500 13px/1.4 var(--font-body);
+}
+.print-body {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(200px, 280px);
+  gap: 16px;
+  align-items: start;
+  margin-top: 4px;
+}
+.print-preview {
+  position: relative;
+  min-height: 160px;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--ink) 6%, var(--panel));
+}
+.print-preview-frame {
+  position: relative;
+  display: inline-block;
+  width: max-content;
+  max-width: 100%;
+  line-height: 0;
+  touch-action: none;
+  user-select: none;
+}
+.print-preview.is-pannable,
+.print-preview-frame.is-pannable {
+  cursor: grab;
+}
+.print-preview.is-panning,
+.print-preview-frame.is-panning {
+  cursor: grabbing;
+}
+.print-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: min(68vh, 620px);
+  width: auto;
+  height: auto;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(16, 28, 22, 0.16);
+}
+.print-preview.is-busy img {
+  opacity: 0.45;
+}
+.print-crosshair {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.print-crosshair::before,
+.print-crosshair::after {
+  content: "";
+  position: absolute;
+  background: #fff;
+  box-shadow: 0 0 0 1px #132019;
+}
+.print-crosshair::before {
+  left: 50%;
+  top: 0;
+  width: 1.5px;
+  height: 100%;
+  transform: translateX(-50%);
+}
+.print-crosshair::after {
+  top: 50%;
+  left: 0;
+  height: 1.5px;
+  width: 100%;
+  transform: translateY(-50%);
+}
+.print-preview .print-full {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  background: #132019;
+  color: #fff;
+  box-shadow: 0 0 0 2px #fff, 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.print-preview.is-expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 28px;
+  border-radius: 0;
+  background: #101814;
+}
+.print-preview.is-expanded .print-preview-frame,
+.print-preview.is-expanded img {
+  max-width: calc(100vw - 56px);
+  max-height: calc(100vh - 56px);
+}
+.print-preview.is-expanded .print-full {
+  top: 16px;
+  right: 16px;
+}
+.print-preview.is-expanded .sub,
+.print-preview.is-placeholder .sub {
+  color: var(--ink);
+}
+.print-preview.is-expanded .sub {
+  color: #fff;
+  background: rgba(16, 24, 20, 0.86);
+}
+.print-preview.is-placeholder {
+  min-height: 120px;
+}
+.print-preview.is-placeholder .sub {
+  position: static;
+}
+.print-custom-scale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 0 4px 0 12px;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 4%, var(--panel));
+}
+.print-custom-scale span {
+  font: 600 13px var(--font-body);
+  color: var(--muted);
+}
+.print-custom-scale input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 600 13px var(--font-body);
+  min-height: 32px;
+  padding: 0 10px 0 0;
+}
+.print-preview .sub {
+  position: absolute;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--panel);
+}
+@media (max-width: 800px) {
+  .print-body {
+    grid-template-columns: 1fr;
+  }
 }
 
 
