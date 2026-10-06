@@ -2607,6 +2607,10 @@ html[data-theme="dark"] .bm-light {
   background: color-mix(in srgb, var(--accent) 14%, var(--panel));
   color: var(--ink);
 }
+.bgrid button:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
 .bgrid-ico {
   width: 34px;
   height: 34px;
@@ -4538,6 +4542,15 @@ html[data-theme="dark"] .csv-table th.csv-col-flag-src {
 .sheet-actions {
   margin-top: 12px;
   padding-top: 4px;
+}
+.editor-save {
+  margin: 10px 0 0;
+  min-height: 1.2em;
+  font: 600 12px/1.35 var(--font-body);
+  color: var(--muted);
+}
+.editor-save.is-error {
+  color: var(--accent-2);
 }
 .sheet-actions .btn {
   min-width: 0;

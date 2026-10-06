@@ -1,6 +1,6 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Home, Building2, Building, Store, Scissors, Undo2, Check, Pencil, X, Ruler, Road, Car, Footprints, ParkingSquare, Bike, Trees, TriangleAlert, Save, Trash2 } from "lucide-react";
+import { Home, Building2, Building, Store, Scissors, Pencil, X, Ruler, Road, Car, Footprints, ParkingSquare, Bike, Trees, TriangleAlert, Trash2 } from "lucide-react";
 import { useApp } from "../store";
 import { isDesktopViewport } from "../lib/breakpoints";
 import { panelSpring, springExit } from "../lib/uiMotion";
@@ -27,10 +27,16 @@ const FIELD_ICONS: Partial<Record<keyof Measurement, typeof Ruler>> = {
     free_sidewalk2_m: Footprints,
 };
 
+function sameMetric(a: unknown, b: unknown) {
+    const av = a ?? null;
+    const bv = b ?? null;
+    return typeof av === "number" && typeof bv === "number" && Number.isNaN(av) && Number.isNaN(bv) ? true : av === bv;
+}
+
 function measurementDraftDiffers(a: Measurement, b: Measurement) {
     if ((a.name || "") !== (b.name || "")) return true;
     if (Boolean(a.illgl_park) !== Boolean(b.illgl_park)) return true;
-    return FORM_FIELDS.some((f) => (a[f.key] ?? null) !== (b[f.key] ?? null));
+    return FORM_FIELDS.some((f) => !sameMetric(a[f.key], b[f.key]));
 }
 
 function schoolName(slug: string, schools: GeoJSON.FeatureCollection | null) {
@@ -53,9 +59,14 @@ export function DetailSheet() {
     const saveStreet = useApp((s) => s.saveStreet);
     const setBuildingType = useApp((s) => s.setBuildingType);
     const startSplitTool = useApp((s) => s.startSplitTool);
-    const [dirty, setDirty] = useState(false);
-    const dirtyRef = useRef(false);
-    dirtyRef.current = dirty;
+    const flushStreet = useRef<(() => void) | null>(null);
+    const bindStreetFlush = useCallback((fn: (() => void) | null) => {
+        flushStreet.current = fn;
+    }, []);
+    const requestClose = useCallback(() => {
+        flushStreet.current?.();
+        closeSheet();
+    }, [closeSheet]);
     const selKind = selected?.kind ?? null;
     const selId = selected?.id ?? null;
 
@@ -77,16 +88,6 @@ export function DetailSheet() {
             void dropEntityLock(selKind, selId);
         };
     }, [open, selKind, selId, editMode, teamAuthed, refreshEntityLock, dropEntityLock]);
-
-    // Modificările nesalvate aparțin unei singure entități.
-    useEffect(() => {
-        setDirty(false);
-    }, [selKind, selId, open]);
-
-    const requestClose = useCallback(() => {
-        if (dirtyRef.current && !window.confirm("Ai modificări nesalvate. Renunți la ele?")) return;
-        closeSheet();
-    }, [closeSheet]);
 
     return (
         <AnimatePresence>
@@ -113,11 +114,9 @@ export function DetailSheet() {
                                     name={selected.name}
                                     initial={existing}
                                     hasLocalEdit={hasLocalEdit}
-                                    onSave={(data) => saveStreet(selected.id, data)}
-                                    onDirtyChange={setDirty}
+                                    onSave={(data) => saveStreet(selected.id, data, { quiet: true })}
+                                    onBindFlush={bindStreetFlush}
                                     onSplit={() => {
-                                        if (dirtyRef.current && !window.confirm("Ai modificări nesalvate. Renunți la ele și segmentezi?")) return;
-                                        setDirty(false);
                                         void startSplitTool(selected.id);
                                     }}
                                     onClose={requestClose}
@@ -138,9 +137,7 @@ export function DetailSheet() {
                                 id={selected.id}
                                 type={selected.type}
                                 onApply={(id, t) => setBuildingType(id, t)}
-                                onDirtyChange={setDirty}
                                 onClose={requestClose}
-                                onCloseNow={closeSheet}
                                 editMode={canEdit}
                                 lockHolder={!entityLock.held ? entityLock.holder : null}
                             />
@@ -204,13 +201,118 @@ function StreetPublic({ name, m, props, onClose, onEditHint, lockHolder }: { nam
     );
 }
 
+const STREET_SAVE_DELAY_MS = 400;
+
+function useStreetAutosave(
+    draft: Measurement,
+    baseline: MutableRefObject<Measurement>,
+    fallbackName: string,
+    onSave: (data: Measurement) => Promise<boolean>,
+) {
+    const [phase, setPhase] = useState<"idle" | "saving" | "saved" | "error">("idle");
+    const draftRef = useRef(draft);
+    const nameRef = useRef(fallbackName);
+    const onSaveRef = useRef(onSave);
+    const kickRef = useRef<() => Promise<void>>(async () => {});
+    const alive = useRef(true);
+    const suppressed = useRef(false);
+    const tail = useRef(Promise.resolve());
+    const timer = useRef<number | null>(null);
+    draftRef.current = draft;
+    nameRef.current = fallbackName;
+    onSaveRef.current = onSave;
+
+    const clearTimer = useCallback(() => {
+        if (timer.current != null) {
+            window.clearTimeout(timer.current);
+            timer.current = null;
+        }
+    }, []);
+
+    const kick = useCallback(() => {
+        const job = tail.current.then(async () => {
+            if (suppressed.current) return;
+            const current = draftRef.current;
+            if (!measurementDraftDiffers(current, baseline.current)) return;
+            const savedDraft = { ...current };
+            const payload: Measurement = { ...savedDraft, name: savedDraft.name || nameRef.current, source: "local" };
+            if (alive.current) setPhase("saving");
+            let ok = false;
+            try {
+                ok = await onSaveRef.current(payload);
+            } catch {
+                ok = false;
+            }
+            if (suppressed.current) return;
+            if (ok) baseline.current = { ...savedDraft, source: "local" };
+            if (!alive.current) return;
+            if (ok && measurementDraftDiffers(draftRef.current, baseline.current)) {
+                queueMicrotask(() => {
+                    void kickRef.current();
+                });
+                return;
+            }
+            setPhase(ok ? "saved" : "error");
+        });
+        tail.current = job.then(
+            () => undefined,
+            () => undefined,
+        );
+        return job;
+    }, [baseline]);
+    kickRef.current = kick;
+
+    useEffect(() => {
+        alive.current = true;
+        return () => {
+            alive.current = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            clearTimer();
+            void kick();
+        };
+    }, [clearTimer, kick]);
+
+    useEffect(() => {
+        if (suppressed.current || !measurementDraftDiffers(draft, baseline.current)) return;
+        clearTimer();
+        timer.current = window.setTimeout(() => {
+            timer.current = null;
+            void kick();
+        }, STREET_SAVE_DELAY_MS);
+        return () => clearTimer();
+    }, [draft, baseline, clearTimer, kick]);
+
+    const flushNow = useCallback(() => {
+        if (suppressed.current) return;
+        clearTimer();
+        void kick();
+    }, [clearTimer, kick]);
+
+    const prepareDelete = useCallback(async () => {
+        suppressed.current = true;
+        clearTimer();
+        await tail.current;
+    }, [clearTimer]);
+
+    const resume = useCallback(() => {
+        suppressed.current = false;
+        void kick();
+    }, [kick]);
+
+    return { phase, flushNow, prepareDelete, resume };
+}
+
 function StreetEditor({
     id,
     name,
     initial,
     hasLocalEdit,
     onSave,
-    onDirtyChange,
+    onBindFlush,
     onSplit,
     onClose,
 }: {
@@ -219,50 +321,26 @@ function StreetEditor({
     initial?: Measurement;
     hasLocalEdit: boolean;
     onSave: (d: Measurement) => Promise<boolean>;
-    onDirtyChange: (dirty: boolean) => void;
+    onBindFlush: (fn: (() => void) | null) => void;
     onSplit: () => void;
     onClose: () => void;
 }) {
     const baseline = useRef<Measurement>({ name, ...initial, source: "local" });
     const [draft, setDraft] = useState<Measurement>(() => ({ ...baseline.current }));
-    const [saving, setSaving] = useState(false);
-    const dirty = useMemo(() => measurementDraftDiffers(draft, baseline.current), [draft]);
+    const { phase, flushNow, prepareDelete, resume } = useStreetAutosave(draft, baseline, name, onSave);
 
     useEffect(() => {
-        onDirtyChange(dirty);
-        return () => onDirtyChange(false);
-    }, [dirty, onDirtyChange]);
-
-    const apply = async () => {
-        if (saving) return;
-        setSaving(true);
-        try {
-            const ok = await onSave({ ...draft, name: draft.name || name, source: "local" });
-            // Salvat → panoul se închide; eșec (lock/conflict/rețea) → rămâi în editor cu modificările tale.
-            if (ok) {
-                onDirtyChange(false);
-                useApp.getState().closeSheet();
-            }
-        } finally {
-            setSaving(false);
-        }
-    };
+        onBindFlush(flushNow);
+        return () => onBindFlush(null);
+    }, [flushNow, onBindFlush]);
 
     const onSubmit = (e: FormEvent) => {
         e.preventDefault();
-        void apply();
-    };
-
-    const discard = () => {
-        if (dirty) {
-            // „Renunță” = aruncă modificările și rămâi în panou, cu valorile de la deschidere.
-            setDraft({ ...baseline.current });
-            return;
-        }
-        onClose();
+        flushNow();
     };
 
     const fromSeed = (initial?.source === "seed" || initial?.source === "csv") && !hasLocalEdit;
+    const saveLabel = phase === "saving" ? "Se salvează…" : phase === "error" ? "Nu s-a salvat" : phase === "saved" ? "Salvat" : "";
 
     return (
         <div className="sheet-body editor-sheet">
@@ -281,13 +359,21 @@ function StreetEditor({
             </div>
             <p className="sub">
                 {fromSeed
-                    ? "Datele s-au aplicat pe toate segmentele cu acest nume. Salvarea rămâne doar pe acest segment."
+                    ? "Datele din tabel sunt pe toate segmentele cu acest nume. Ce schimbi aici se salvează doar pe acest segment."
                     : hasLocalEdit
-                      ? "Editare pe acest segment, nu pe toată strada."
-                      : "Completează lățimile — salvarea e doar pe acest segment, nu pe celelalte bucăți cu același nume."}
+                      ? "Modificările se salvează singure, doar pe acest segment."
+                      : "Completează lățimile. Se salvează singur, doar pe acest segment, nu pe celelalte bucăți cu același nume."}
             </p>
             <SpaceBar m={draft} />
-            <form className="form" onSubmit={onSubmit}>
+            <form
+                className="form"
+                onSubmit={onSubmit}
+                onBlur={(e) => {
+                    const next = e.relatedTarget;
+                    if (next instanceof Node && e.currentTarget.contains(next)) return;
+                    flushNow();
+                }}
+            >
                 <label className="field field-named">
                     <span className="field-cap">
                         <Road size={14} strokeWidth={2.25} aria-hidden />
@@ -332,17 +418,15 @@ function StreetEditor({
                     <input type="checkbox" checked={!!draft.illgl_park} onChange={(e) => setDraft({ ...draft, illgl_park: e.target.checked })} />
                 </label>
 
-                <div className="actions sheet-actions">
-                    <button type="submit" className="btn primary" disabled={saving || !dirty}>
-                        <Check size={16} strokeWidth={2.25} aria-hidden />
-                        {saving ? "Se salvează…" : "Aplică"}
-                    </button>
-                    <button type="button" className="btn" onClick={discard} disabled={saving}>
-                        <Undo2 size={16} strokeWidth={2.25} aria-hidden />
-                        {dirty ? "Renunță" : "Închide"}
-                    </button>
-                </div>
-                <button type="button" className="btn wide" onClick={onSplit} disabled={saving}>
+                {saveLabel ? (
+                    <p className={`editor-save${phase === "error" ? " is-error" : ""}`} aria-live="polite">
+                        {saveLabel}
+                    </p>
+                ) : null}
+                <button type="button" className="btn wide" onClick={() => {
+                    flushNow();
+                    onSplit();
+                }}>
                     <Scissors size={15} strokeWidth={2.25} aria-hidden />
                     Segmentează strada în bucăți
                 </button>
@@ -352,9 +436,13 @@ function StreetEditor({
                             type="button"
                             className="btn danger-ghost wide"
                             onClick={() => {
-                                if (window.confirm(`Ștergi măsurătorile salvate pentru „${name}”?`)) {
-                                    useApp.getState().deleteStreetEdit(id);
-                                }
+                                if (!window.confirm(`Ștergi măsurătorile salvate pentru „${name}”?`)) return;
+                                void (async () => {
+                                    await prepareDelete();
+                                    await useApp.getState().deleteStreetEdit(id);
+                                    const sel = useApp.getState().selected;
+                                    if (useApp.getState().sheetOpen && sel?.kind === "street" && sel.id === id) resume();
+                                })();
                             }}
                         >
                             <Trash2 size={15} strokeWidth={2.25} aria-hidden />
@@ -380,45 +468,30 @@ function BuildingEditor({
     id,
     type,
     onApply,
-    onDirtyChange,
     onClose,
-    onCloseNow,
     editMode,
     lockHolder,
 }: {
     id: string;
     type: string;
     onApply: (id: string, t: string) => Promise<boolean>;
-    onDirtyChange: (dirty: boolean) => void;
     onClose: () => void;
-    onCloseNow: () => void;
     editMode: boolean;
     lockHolder?: string | null;
 }) {
     const currentType = coerceBuildingType(type);
-    // Alegerea e doar „propusă” până apeși Aplică; Renunță o aruncă.
-    const [pending, setPending] = useState<ReturnType<typeof coerceBuildingType> | null>(null);
     const [saving, setSaving] = useState(false);
-    const dirty = editMode && pending != null && pending !== currentType;
-    const shown = dirty && pending ? pending : currentType;
-    const current = buildingTypeMeta(shown);
+    const current = buildingTypeMeta(currentType);
     const CurrentIcon = BUILDING_ICONS[current.icon];
 
-    useEffect(() => {
-        onDirtyChange(dirty);
-        return () => onDirtyChange(false);
-    }, [dirty, onDirtyChange]);
-
-    const apply = async () => {
-        if (saving || !dirty || !pending) return;
+    const pick = async (next: string) => {
+        if (saving || next === currentType) return;
         setSaving(true);
         try {
-            const ok = await onApply(id, pending);
-            if (ok) {
-                onDirtyChange(false);
-                onCloseNow();
-            }
-        } finally {
+            const ok = await onApply(id, next);
+            if (ok) onClose();
+            else setSaving(false);
+        } catch {
             setSaving(false);
         }
     };
@@ -453,9 +526,10 @@ function BuildingEditor({
                                 <button
                                     key={t}
                                     type="button"
-                                    className={shown === t ? "on" : ""}
+                                    className={currentType === t ? "on" : ""}
+                                    aria-pressed={currentType === t}
                                     disabled={saving}
-                                    onClick={() => setPending(t)}
+                                    onClick={() => void pick(t)}
                                 >
                                     <span className="bgrid-ico" style={{ color: item.color, background: `color-mix(in srgb, ${item.color} 18%, transparent)` }}>
                                         <Icon size={18} strokeWidth={2.25} aria-hidden />
@@ -465,16 +539,11 @@ function BuildingEditor({
                             );
                         })}
                     </div>
-                    <div className="actions sheet-actions">
-                        <button type="button" className="btn primary" onClick={() => void apply()} disabled={!dirty || saving}>
-                            <Check size={16} strokeWidth={2.25} aria-hidden />
-                            {saving ? "Se salvează…" : "Aplică"}
-                        </button>
-                        <button type="button" className="btn" onClick={() => (dirty ? setPending(null) : onClose())} disabled={saving}>
-                            <Undo2 size={16} strokeWidth={2.25} aria-hidden />
-                            {dirty ? "Renunță" : "Închide"}
-                        </button>
-                    </div>
+                    {saving ? (
+                        <p className="editor-save" aria-live="polite">
+                            Se salvează…
+                        </p>
+                    ) : null}
                 </>
             ) : (
                 <p className="sub">

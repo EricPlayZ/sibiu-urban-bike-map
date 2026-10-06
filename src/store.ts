@@ -284,7 +284,7 @@ type AppState = {
   selectStreet: (id: string, name: string, props: Record<string, unknown>) => void;
   selectBuilding: (id: string, type: string) => void;
   closeSheet: () => void;
-  saveStreet: (id: string, data: Measurement) => Promise<boolean>;
+  saveStreet: (id: string, data: Measurement, opts?: { quiet?: boolean }) => Promise<boolean>;
   deleteStreetEdit: (id: string) => Promise<void>;
   deleteBuildingEdit: (id: string) => Promise<void>;
   clearSplitEdit: (root: string) => Promise<void>;
@@ -1089,13 +1089,13 @@ export const useApp = create<AppState>((set, get) => ({
     }),
   closeSheet: () => set({ sheetOpen: false, selected: null }),
 
-  saveStreet: async (id, data) => {
+  saveStreet: async (id, data, opts) => {
     if (!get().teamAuthed) return false;
     try {
       const saved = await putStreet(id, data, get().committedEdits[id]?.updated_at);
       const committed = { ...get().committedEdits, [id]: saved };
       set({ committedEdits: committed, ...syncWorkingStreets(get().pipelineStreets, committed, get().selected) });
-      get().showToast("Salvat pe server");
+      if (!opts?.quiet) get().showToast("Salvat pe server");
       return true;
     } catch (e) {
       const holder = lockedHolder(e);
@@ -1118,7 +1118,7 @@ export const useApp = create<AppState>((set, get) => ({
           const saved = await putStreet(id, data, "*");
           const committed = { ...get().committedEdits, [id]: saved };
           set({ committedEdits: committed, ...syncWorkingStreets(get().pipelineStreets, committed, get().selected) });
-          get().showToast("Suprascris pe server");
+          if (!opts?.quiet) get().showToast("Suprascris pe server");
           return true;
         } catch (e2) {
           const h2 = lockedHolder(e2);
